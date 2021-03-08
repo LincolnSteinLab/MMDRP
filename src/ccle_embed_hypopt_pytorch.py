@@ -10,10 +10,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils import data
 
-from DataImportModules import OmicData
+from DRP.src.DataImportModules import OmicData
 from Models import DNNAutoEncoder
-from TrainFunctions import omic_train
-from Tune.TuneTrainables import OmicTrainable
+from DRP.src.TrainFunctions import omic_train
+from TuneTrainables import OmicTrainable
 
 import ray
 from ray import tune
@@ -30,14 +30,14 @@ device = torch.device("cuda:0" if use_cuda else "cpu")
 cudnn.benchmark = False
 cudnn.deterministic = True
 
-file_name_dict = {"drug_file_name": "CTRP_AUC_MORGAN.hdf",
+file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
                   "mut_file_name": "DepMap_20Q2_CGC_Mutations_by_Cell.hdf",
                   "cnv_file_name": "DepMap_20Q2_CopyNumber.hdf",
                   "exp_file_name": "DepMap_20Q2_Expression.hdf",
                   "prot_file_name": "DepMap_20Q2_No_NA_ProteinQuant.hdf",
                   "tum_file_name": "DepMap_20Q2_Line_Info.csv",
-                  "gdsc1_file_name": "GDSC1_AUC_MORGAN.hdf",
-                  "gdsc2_file_name": "GDSC2_AUC_MORGAN.hdf"}
+                  "gdsc1_file_name": "GDSC1_AAC_MORGAN.hdf",
+                  "gdsc2_file_name": "GDSC2_AAC_MORGAN.hdf"}
 
 
 def train_auto_encoder(args, config, local_dir, data_dir):
@@ -301,7 +301,7 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
     # if torch.cuda.is_available():
     #     device = "cuda:0"
     #     if gpus_per_trial > 1:
-    #         best_trained_model = nn.DataParallel(best_trained_model)
+    #         best_trained_model = NeuralNets.DataParallel(best_trained_model)
     # best_trained_model.to(device)
     #
     # best_checkpoint_dir = best_trial.checkpoint.value

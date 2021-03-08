@@ -4,7 +4,7 @@ from CustomFunctions import AverageMeter
 from DataImportModules import AutoEncoderPrefetcher, DataPrefetcher
 
 
-def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loader=None):
+def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loader=None, verbose: bool = False):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     train_losses = AverageMeter('Training Loss', ':.4e')
@@ -17,7 +17,8 @@ def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loa
     end = time.time()
     data_end_time = time.time()
 
-    print("Training Drug Model...")
+    if verbose:
+        print("Training Drug Model...")
     i = 0
     running_loss = 0.0
     while cur_data is not None:
@@ -37,10 +38,11 @@ def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loa
         cur_data = prefetcher.next()
 
         running_loss += loss.item()
-        if i % 1000 == 999:    # print every 1000 mini-batches
-            print('[%d, %5d] train loss: %.3f' %
-                  (epoch, i, running_loss / 1000))
-            running_loss = 0.0
+        if verbose:
+            if i % 1000 == 999:    # print every 1000 mini-batches
+                print('[%d, %5d] train loss: %.3f' %
+                      (epoch, i, running_loss / 1000))
+                running_loss = 0.0
 
     if valid_loader is None:
         return train_losses
@@ -52,7 +54,8 @@ def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loa
         end = time.time()
         data_end_time = time.time()
 
-        print("Validating Drug Model...")
+        if verbose:
+            print("Validating Drug Model...")
         i = 0
         running_loss = 0.0
         with torch.no_grad():
@@ -67,19 +70,22 @@ def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loa
                 valid_losses.update(valid_loss.item(), cur_data.shape[0])
                 data_end_time = time.time()
                 running_loss += valid_loss.item()
-                if i % 200 == 199:    # print every 200 mini-batches
-                    print('[%d, %5d] valid loss: %.3f' %
-                          (epoch, i, running_loss / 200))
-                    running_loss = 0.0
+                if verbose:
+                    if i % 200 == 199:    # print every 200 mini-batches
+                        print('[%d, %5d] valid loss: %.3f' %
+                              (epoch, i, running_loss / 200))
+                        running_loss = 0.0
 
                 data_end_time = time.time()
                 cur_data = prefetcher.next()
 
-    print("Sum train and valid losses at epoch", epoch, ":", train_losses.sum, valid_losses.sum)
+    if verbose:
+        print("Sum train and valid losses at epoch", epoch, ":", train_losses.sum, valid_losses.sum)
+
     return train_losses, valid_losses
 
 
-def omic_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loader=None):
+def omic_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loader=None, verbose: bool = False):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     train_losses = AverageMeter('Training Loss', ':.4e')
@@ -92,7 +98,8 @@ def omic_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loade
     end = time.time()
     data_end_time = time.time()
 
-    print("Training Omic Model...")
+    if verbose:
+        print("Training Omic Model...")
     i = 0
     running_loss = 0.0
     while cur_data is not None:
@@ -113,10 +120,11 @@ def omic_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loade
         cur_data = prefetcher.next()
 
         running_loss += loss.item()
-        if i % 1000 == 999:    # print every 1000 mini-batches
-            print('[%d, %5d] train loss: %.3f' %
-                  (epoch, i, running_loss / 1000))
-            running_loss = 0.0
+        if verbose:
+            if i % 1000 == 999:    # print every 1000 mini-batches
+                print('[%d, %5d] train loss: %.3f' %
+                      (epoch, i, running_loss / 1000))
+                running_loss = 0.0
 
     if valid_loader is None:
         return train_losses
@@ -128,7 +136,8 @@ def omic_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loade
         end = time.time()
         data_end_time = time.time()
 
-        print("Validating Omic Model...")
+        if verbose:
+            print("Validating Omic Model...")
         i = 0
         running_loss = 0.0
         with torch.no_grad():
@@ -151,25 +160,16 @@ def omic_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loade
                           (epoch, i, running_loss / 200))
                     running_loss = 0.0
 
-    print("Sum train and valid losses at epoch", epoch, ":", train_losses.sum, valid_losses.sum)
+    if verbose:
+        print("Sum train and valid losses at epoch", epoch, ":", train_losses.sum, valid_losses.sum)
+
     return train_losses, valid_losses
 
 
-def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch, train_len, valid_len, batch_size):
-    batch_time = AverageMeter('Time', ':6.3f')
+def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch, verbose: bool = False):
     data_time = AverageMeter('Data', ':6.3f')
     train_losses = AverageMeter('Training Loss', ':.4e')
     valid_losses = AverageMeter('Validation Loss', ':.4e')
-
-    # TODO Uncomment
-    # train_progress = ProgressMeter(
-    #     train_len // batch_size,
-    #     [batch_time, data_time, train_losses],
-    #     prefix="Training Epoch: [{}]".format(epoch))
-    # valid_progress = ProgressMeter(
-    #     valid_len // (batch_size * 8),
-    #     [batch_time, data_time, valid_losses],
-    #     prefix="Validating Epoch: [{}]".format(epoch))
 
     # ==== Train Model ====
     # switch to train mode
@@ -181,7 +181,8 @@ def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch
     _, cur_dr_data, cur_dr_target = prefetcher.next()
     assert len(cur_dr_data) == cur_model.len_encoder_list, "DataPrefetcher DR data doesn't match # encoders"
 
-    print("Training DRP Model...")
+    if verbose:
+        print("Training DRP Model...")
     # with profiler.profile(record_shapes=False, use_cuda=True, profile_memory=True) as prof:
     #   with profiler.record_function("model_inference"):
     i = 0
@@ -214,10 +215,11 @@ def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch
         optimizer.step()
         train_losses.update(loss.item(), cur_dr_target.shape[0])
         running_loss += loss.item()
-        if i % 1000 == 999:    # print every 2000 mini-batches
-            print('[%d, %5d] train loss: %.3f' %
-                  (epoch, i, running_loss / 1000))
-            running_loss = 0.0
+        if verbose:
+            if i % 1000 == 999:    # print every 2000 mini-batches
+                print('[%d, %5d] train loss: %.3f' %
+                      (epoch, i, running_loss / 1000))
+                running_loss = 0.0
 
         # if i % 1000 == 0:  # print every 1000 mini-batches
         #     # train_r2.update(0, cur_dr_target.shape[0])
@@ -249,7 +251,8 @@ def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch
     _, cur_dr_data, cur_dr_target = prefetcher.next()
     assert len(cur_dr_data) == cur_model.len_encoder_list, "DataPrefetcher DR data doesn't match # encoders"
 
-    print("Validating DRP Model...")
+    if verbose:
+        print("Validating DRP Model...")
     # with profiler.profile(record_shapes=False, use_cuda=True, profile_memory=True) as prof:
     #   with profiler.record_function("model_inference"):
     i = 0
@@ -268,11 +271,13 @@ def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch
 
             _, cur_dr_data, cur_dr_target = prefetcher.next()
             running_loss += valid_loss.item()
-            if i % 200 == 199:    # print every 2000 mini-batches
-                print('[%d, %5d] valid loss: %.3f' %
-                      (epoch, i, running_loss / 200))
-                running_loss = 0.0
+            if verbose:
+                if i % 200 == 199:    # print every 2000 mini-batches
+                    print('[%d, %5d] valid loss: %.3f' %
+                          (epoch, i, running_loss / 200))
+                    running_loss = 0.0
+    if verbose:
+        print("Sum train and valid losses at epoch", epoch, ":", train_losses.sum, valid_losses.sum)
 
-    print("Sum train and valid losses at epoch", epoch, ":", train_losses.sum, valid_losses.sum)
     return train_losses, valid_losses
 

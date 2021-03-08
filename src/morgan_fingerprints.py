@@ -81,16 +81,16 @@ if __name__ == '__main__':
     # path = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/ChEMBL/"
     path = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/"
     # file_name = "chembl_27_chemreps.txt"
-    # file_name = "CTRP_AUC_SMILES.txt"
-    file_name = "CTRP_IC50_SMILES.txt"
-    # file_name = "GDSC1_AUC_SMILES.txt"
-    # file_name = "GDSC2_AUC_SMILES.txt"
+    file_name = "CTRP_AAC_SMILES.txt"
+    # file_name = "CTRP_IC50_SMILES.txt"
+    # file_name = "GDSC1_AAC_SMILES.txt"
+    # file_name = "GDSC2_AAC_SMILES.txt"
     # Read and subset the data
     print("Reading file...")
     # all_data = pd.read_csv(path + file_name, engine='c', sep='\t')
     all_data = pd.read_csv(path + file_name, engine='c', sep=',')
-    # full_train = all_data[["ccl_name", "cpd_name", "cpd_smiles", "area_under_curve"]]
-    full_train = all_data[["ccl_name", "cpd_name", "cpd_smiles", "ic50"]]
+    full_train = all_data[["ccl_name", "primary_disease", "cpd_name", "cpd_smiles", "area_above_curve"]]
+    # full_train = all_data[["ccl_name", "cpd_name", "cpd_smiles", "ic50"]]
     # full_train = all_data[["canonical_smiles"]]
 
     pool = multiprocessing.Pool(4)
@@ -115,13 +115,13 @@ if __name__ == '__main__':
         # pd.DataFrame.to_pickle(full_train,
         #                        "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/ChEMBL_Morgan_"
         #                        + width + ".pkl")
-        # full_train.to_hdf("CTRP_AUC_MORGAN_" + width + ".hdf", key="df")
-        full_train.to_hdf("CTRP_IC50_MORGAN_" + width + ".hdf", key="df")
+        full_train.to_hdf(path+"CTRP_AAC_MORGAN_" + width + ".hdf", key="df")
+        # full_train.to_hdf("CTRP_IC50_MORGAN_" + width + ".hdf", key="df")
 
     pool.close()
 
-    # full_train.to_hdf("GDSC1_AUC_MORGAN.hdf", key="df")
-    # full_train.to_hdf("GDSC2_AUC_MORGAN.hdf", key="df")
+    # full_train.to_hdf("GDSC1_AAC_MORGAN.hdf", key="df")
+    # full_train.to_hdf("GDSC2_AAC_MORGAN.hdf", key="df")
     # final = [i.ToBitString() for i in results]
     # with open(path+"Morgan_2048_list.pkl", "wb") as fp:   #Pickling
     #     pickle.dump(results, fp)

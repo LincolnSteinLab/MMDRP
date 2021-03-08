@@ -12,10 +12,10 @@ from ray.tune.schedulers import ASHAScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from torch.utils import data
 
-from DataImportModules import MorganData
+from DRP.src.DataImportModules import MorganData
 from Models import DNNAutoEncoder
-from TrainFunctions import morgan_train
-from Tune.TuneTrainables import MorganTrainable
+from DRP.src.TrainFunctions import morgan_train
+from TuneTrainables import MorganTrainable
 
 print("Current working directory is:", os.getcwd())
 

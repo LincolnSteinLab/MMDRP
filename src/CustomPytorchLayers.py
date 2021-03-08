@@ -6,10 +6,10 @@ import torch
 import torch.nn as nn
 from collections import OrderedDict
 
-# activation_dict = nn.ModuleDict({
-#     'lrelu': nn.LeakyReLU(),
-#     'prelu': nn.PReLU(),
-#     'relu': nn.ReLU()
+# activation_dict = NeuralNets.ModuleDict({
+#     'lrelu': NeuralNets.LeakyReLU(),
+#     'prelu': NeuralNets.PReLU(),
+#     'relu': NeuralNets.ReLU()
 # })
 
 
@@ -60,9 +60,9 @@ class CustomDense(nn.Module):
 
         self.custom_dense = OrderedDict([
             (name + "_linear", nn.Linear(in_features=input_size, out_features=hidden_size)),
-            (name + "_activation", cur_act_fun),
             (name + "_batchnorm", nn.BatchNorm1d(num_features=hidden_size, affine=True, track_running_stats=False))
             if batch_norm is True else (name + "identity", nn.Identity()),
+            (name + "_activation", cur_act_fun),
             (name + "_dropout", nn.Dropout(p=dropout))])
         self.custom_dense = nn.Sequential(self.custom_dense)
 
@@ -189,7 +189,7 @@ class CustomCNN(nn.Module):
     def forward(self, x):
         return self.custom_conv(x)
 
-# class DeepCNNAutoEncoder(nn.Module):
+# class DeepCNNAutoEncoder(NeuralNets.Module):
 #     def __init__(self, num_branch, code_layer_size=None, kernel_size_list=None, in_channels=1,
 #                  out_channels_list=None, batchnorm_list=None, act_fun=None, dropout_list=None, encode=True):
 #         super(DeepCNNAutoEncoder, self).__init__()

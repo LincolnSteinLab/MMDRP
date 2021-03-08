@@ -11,66 +11,98 @@ depmap_samples$stripped_cell_line_name
 PharmacoGx::availablePSets()
 
 # CTRPv2 ====
+??summarizeSensitivityProfiles
+require(PharmacoGx)
 
 ctrp2 <- downloadPSet("CTRPv2_2015")
 
-sensNumber(ctrp2)
-?summarizeSensitivityProfiles
-??PharmacoGx
-??summarizeSensitivityProfiles
-# ctrp2_auc <- summarizeSensitivityProfiles(pSet = ctrp2, sensitivity.measure = "auc_recomputed", summary.stat = "median", fill.missing = T)
-ctrp2_ic50 <- PharmacoGx::summarizeSensitivityProfiles(object = ctrp2, sensitivity.measure = "ic50_recomputed", summary.stat = "median", fill.missing = T)
+ctrp2_aac <- summarizeSensitivityProfiles(object = ctrp2, sensitivity.measure = "aac_recomputed", summary.stat = "median", fill.missing = T,)
+
+# ctrp2@drug[1:20, c("drugid", "cpd_name")]
+# ctrp2_ic50 <- PharmacoGx::summarizeSensitivityProfiles(object = ctrp2, sensitivity.measure = "ic50_recomputed", summary.stat = "median", fill.missing = T)
 # Convert to data.table
-ctrp2_auc <- as.data.table(ctrp2_auc, keep.rownames = T)
-ctrp2_ic50 <- as.data.table(ctrp2_ic50, keep.rownames = T)
-dim(ctrp2_auc)
-dim(ctrp2_ic50)
+ctrp2_aac <- as.data.table(ctrp2_aac, keep.rownames = T)
+# ctrp2_ic50 <- as.data.table(ctrp2_ic50, keep.rownames = T)
+dim(ctrp2_aac)
+# dim(ctrp2_ic50)
 # Convert to long format
-ctrp2_auc <- melt.data.table(data = ctrp2_auc)
-ctrp2_ic50 <- melt.data.table(data = ctrp2_ic50)
+ctrp2_aac <- melt.data.table(data = ctrp2_aac)
+# ctrp2_ic50 <- melt.data.table(data = ctrp2_ic50)
 # Remove NAs
-ctrp2_auc <- ctrp2_auc[!is.na(value)]
-ctrp2_ic50 <- ctrp2_ic50[!is.na(value)]
-colnames(ctrp2_auc) <- c("cpd_name", "ccl_name", "area_under_curve")
-colnames(ctrp2_ic50) <- c("cpd_name", "ccl_name", "ic50")
+ctrp2_aac <- ctrp2_aac[!is.na(value)]
+# ctrp2_ic50 <- ctrp2_ic50[!is.na(value)]
+colnames(ctrp2_aac) <- c("cpd_name", "ccl_name", "area_above_curve")
+# colnames(ctrp2_ic50) <- c("cpd_name", "ccl_name", "ic50")
 
 # Add smiles data
-dim(ctrp2_auc)
+dim(ctrp2_aac)  ### 363,634 dose-response curves
+
 dim(ctrp2_ic50)
 dim(ctrp2)
-ctrp2$cpd_smiles
-sum(unique(ctrp$cpd_name) %in% unique(ctrp2_auc$cpd_name))
-sum(unique(ctrp2$cpd_name) %in% unique(ctrp2_ic50$cpd_name))
-ctrp2_smiles <- data.table(cpd_name = ctrp2@drug$cpd_name, cpd_smiles = ctrp2@drug$cpd_smiles)
+ctrp2_smiles <- data.table(drugid = ctrp2@drug$drugid, cpd_smiles = ctrp2@drug$cpd_smiles)
 
-length(unique(ctrp2_auc$cpd_name))
+sum(unique(ctrp2@drug$drugid) %in% unique(ctrp2_aac$cpd_name)) / length(unique(ctrp2_aac$cpd_name))
+
+
+length(unique(ctrp2_aac$cpd_name))
 length(unique(ctrp2_ic50$cpd_name))
-length(unique(ctrp2_smiles$cpd_name))
-sum(unique(ctrp2_smiles$cpd_name) == unique(ctrp2_auc$cpd_name))
-sum(unique(ctrp2_smiles$cpd_name) == unique(ctrp2_ic50$cpd_name))
+length(unique(ctrp2_smiles$drugid))
 
-sum(tolower(unique(ctrp2_smiles$cpd_name)) == tolower(unique(ctrp2_auc$cpd_name)))
-sum(tolower(unique(ctrp2_smiles$cpd_name)) == tolower(unique(ctrp2_ic50$cpd_name)))
-changed = !tolower(unique(ctrp2_smiles$cpd_name)) == tolower(unique(ctrp2_auc$cpd_name))
-changed = !tolower(unique(ctrp2_smiles$cpd_name)) == tolower(unique(ctrp2_ic50$cpd_name))
-temp = data.table(before = unique(ctrp2_smiles$cpd_name)[changed], after = unique(ctrp2_auc$cpd_name)[changed])
-temp = data.table(before = unique(ctrp2_smiles$cpd_name)[changed], after = unique(ctrp2_ic50$cpd_name)[changed])
+sum(unique(ctrp2_smiles$drugid) %in% unique(ctrp2_aac$cpd_name)) / length(unique(ctrp2_aac$cpd_name))
+sum(unique(ctrp2_smiles$drugid) == unique(ctrp2_ic50$cpd_name))
+
+sum(tolower(unique(ctrp2_smiles$drugid)) == tolower(unique(ctrp2_aac$cpd_name)))
+sum(tolower(unique(ctrp2_smiles$drugid)) == tolower(unique(ctrp2_ic50$cpd_name)))
+changed = !(tolower(unique(ctrp2_smiles$drugid)) == tolower(unique(ctrp2_aac$cpd_name)))
+changed = !tolower(unique(ctrp2_smiles$drugid)) == tolower(unique(ctrp2_ic50$cpd_name))
+
+temp = data.table(before = unique(ctrp2_smiles$drugid)[changed], after = unique(ctrp2_aac$cpd_name)[changed])
+temp = data.table(before = unique(ctrp2_smiles$drugid)[changed], after = unique(ctrp2_ic50$cpd_name)[changed])
 View(temp)
 
-unique(ctrp2_smiles$cpd_name)[!(unique(ctrp2_smiles$cpd_name) == unique(ctrp2_auc$cpd_name))]
-unique(ctrp2_auc$cpd_name)[!(unique(ctrp2_smiles$cpd_name) == unique(ctrp2_auc$cpd_name))]
+ctrp2_smiles
+ctrp2_aac
+
+unique(ctrp2_smiles$drugid)[!(unique(ctrp2_smiles$drugid) == unique(ctrp2_aac$cpd_name))]
+unique(ctrp2_aac$cpd_name)[!(unique(ctrp2_smiles$cpd_name) == unique(ctrp2_aac$cpd_name))]
 
 drug_table <- data.table(canonical_name = rownames(drugInfo(ctrp2)),
                          common_name = drugInfo(ctrp2)[, c("cpd_name")],
                          cpd_smiles = drugInfo(ctrp2)[, c("cpd_smiles")])
-final_ctrpv2_auc <- merge(ctrp2_auc, drug_table[, c("canonical_name", "cpd_smiles")], by.x = "cpd_name", by.y = "canonical_name")
-final_ctrpv2_ic50 <- merge(ctrp2_ic50, drug_table[, c("canonical_name", "cpd_smiles")], by.x = "cpd_name", by.y = "canonical_name")
+final_ctrpv2_aac <- merge(ctrp2_aac, drug_table[, c("canonical_name", "cpd_smiles")], by.x = "cpd_name", by.y = "canonical_name")
+
+final_ctrpv2_ic50 <- merge(ctrp2_ic50, drug_table[, c("canonical_name", "cpd_smiles")], by.x = "drugid", by.y = "canonical_name")
 
 # Save
-fwrite(final_ctrpv2_auc, paste0(path, "Data/DRP_Training_Data/CTRP_AUC_SMILES.txt"))
+fwrite(final_ctrpv2_aac, paste0(path, "Data/DRP_Training_Data/CTRP_AAC_SMILES.txt"))
 fwrite(final_ctrpv2_ic50, paste0(path, "Data/DRP_Training_Data/CTRP_IC50_SMILES.txt"))
-final_ctrpv2_auc <- fread(paste0(path, "Data/DRP_Training_Data/CTRP_AUC_SMILES.txt"))
+final_ctrpv2_aac <- fread(paste0(path, "Data/DRP_Training_Data/CTRP_AAC_SMILES.txt"))
 final_ctrpv2_ic50 <- fread(paste0(path, "Data/DRP_Training_Data/CTRP_IC50_SMILES.txt"))
+
+# Add disease information
+require(stringr)
+line_info <- fread("Data/DRP_Training_Data/DepMap_20Q2_Line_Info.csv")
+final_ctrpv2_aac <- fread("Data/DRP_Training_Data/CTRP_AAC_SMILES.txt")
+
+# Remove all hyphens, convert to upper case
+line_info$other_ccl_name <- str_replace_all(toupper(line_info$stripped_cell_line_name), "-", "")
+final_ctrpv2_aac$other_ccl_name <- str_replace_all(toupper(final_ctrpv2_aac$ccl_name), "-", "")
+# Remove all spaces
+line_info$other_ccl_name <- str_replace_all(toupper(line_info$other_ccl_name), " ", "")
+final_ctrpv2_aac$other_ccl_name <- str_replace_all(toupper(final_ctrpv2_aac$other_ccl_name), " ", "")
+
+sum(unique(final_ctrpv2_aac$other_ccl_name) %in% unique(line_info$other_ccl_name)) / length(unique(final_ctrpv2_aac$other_ccl_name))  ### 0.89177!!!
+# A quarter of the data cannot be paired...
+
+# Find what cannot be paired
+final_ctrpv2_aac[other_ccl_name %in% unique(final_ctrpv2_aac$other_ccl_name)[!(unique(final_ctrpv2_aac$other_ccl_name) %in% unique(line_info$other_ccl_name))]]
+
+final_ctrpv2_aac <- merge(final_ctrpv2_aac, line_info[, c("other_ccl_name", "primary_disease")], by = "other_ccl_name")
+final_ctrpv2_aac$other_ccl_name <- NULL
+setcolorder(final_ctrpv2_aac, neworder = c("cpd_name", "ccl_name", "primary_disease", "area_above_curve", "cpd_smiles"))
+
+fwrite(final_ctrpv2_aac, "Data/DRP_Training_Data/CTRP_AAC_SMILES.txt")
+
 
 # CCLE ====
 # ccle <- downloadPSet("CCLE")

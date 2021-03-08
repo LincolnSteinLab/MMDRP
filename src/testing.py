@@ -71,8 +71,8 @@ writer.add_graph(prot_model, torch.zeros([1, 5500]))
 writer.close()
 
 # summary(prot_model, (5500,))
-# cur_autoencoders = nn.ModuleList([morgan_model, mut_model, cnv_model, exp_model, prot_model])
-# cur_encoders = nn.ModuleList([autoencoder.encoder for autoencoder in cur_autoencoders])
+# cur_autoencoders = NeuralNets.ModuleList([morgan_model, mut_model, cnv_model, exp_model, prot_model])
+# cur_encoders = NeuralNets.ModuleList([autoencoder.encoder for autoencoder in cur_autoencoders])
 
 # list(cur_encoders[0].named_children())
 # list(cur_encoders[1].named_children())
@@ -105,14 +105,12 @@ writer.close()
 
 
 # =============== PairData Testing =====================
-import numpy as np
 from DRPPreparation import drp_main_prep, drp_create_datasets
-import torch
 
-path = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/"
+path = "/Data/DRP_Training_Data/"
 bottleneck = True
 cur_modules = ['drug', 'mut', 'cnv', 'exp', 'prot']
-prep_gen = drp_main_prep(module_list=cur_modules, train_file="CTRP_AUC_MORGAN_512.hdf", path=path, device="cpu")
+prep_gen = drp_main_prep(module_list=cur_modules, train_file="CTRP_AAC_MORGAN_512.hdf", path=path, device="cpu")
 prep_list = next(prep_gen)
 _, final_address, subset_data, subset_keys, subset_encoders, \
     data_list, key_columns, required_data_indices = prep_list
@@ -121,7 +119,7 @@ train_data, train_sampler, valid_sampler, \
     train_idx, valid_idx = drp_create_datasets(data_list,
                                                key_columns,
                                                drug_index=0,
-                                               drug_dr_column="area_under_curve",
+                                               drug_dr_column="area_above_curve",
                                                test_drug_data=None,
                                                bottleneck=bottleneck,
                                                required_data_indices=[0, 1, 2, 3, 4])

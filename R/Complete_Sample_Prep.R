@@ -376,6 +376,7 @@ sum(unique(gdsc1$DRUG_NAME) %in% unique(gdsc2$DRUG_NAME)) # Drug Overlap: 88
 sum(unique(gdsc1$CELL_LINE_NAME) %in% unique(gdsc2$CELL_LINE_NAME))  # Cell Line Overlap: 808
 
 # ==== CTRP ====
+# NOTE: Newer and better AUC calculation in PharmacoGx.R file!
 ctrp_curves <- fread(paste0(path, "Data/CTRP/v20.data.curves_post_qc.txt"))
 exper_data <- fread(paste0(path, "Data/CTRP/v20.meta.per_experiment.txt"))
 cell_data <- fread(paste0(path, "Data/CTRP/v20.meta.per_cell_line.txt"))
@@ -404,6 +405,19 @@ ctrp <- merge(ctrp, ctrp_auc[, c("experiment_id", "master_cpd_id", "area_under_c
 # Save
 fwrite(ctrp, paste0(path, "Data/DRP_Training_Data/CTRP_AUC_SMILES.txt"))
 
+# Add primary disease information. NOTE: This removes some DR data as 45 cell lines in CTRPv2 cannot be paired with DepMap!!!
+line_info <- fread("Data/DRP_Training_Data/DepMap_20Q2_Line_Info.csv")
+ctrp <- fread("Data/DRP_Training_Data/CTRP_AUC_SMILES.txt")
+
+line_info$other_ccl_name <- str_replace(toupper(line_info$stripped_cell_line_name), "-", "")
+ctrp$other_ccl_name <- str_replace(toupper(ctrp$ccl_name), "-", "")
+
+ctrp <- merge(ctrp, line_info[, c("other_ccl_name", "primary_disease")], by = "other_ccl_name")
+ctrp$other_ccl_name <- NULL
+setcolorder(ctrp, neworder = c("cpd_name", "ccl_name", "primary_disease", "area_under_curve", "cpd_smiles"))
+
+fwrite(ctrp, "Data/DRP_Training_Data/CTRP_AUC_SMILES.txt")
+
 
 # Experiment ID 
 unique(ctrp[, c("master_ccl_id", "experiment_id")])
@@ -425,3 +439,162 @@ require(data.table)
 path = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/"
 
 chembl <- fread(paste0(path, "Data/chembl_27_chemreps.txt"))
+
+
+
+# ==== EDA ======
+require(data.table)
+require(stringr)
+require(ggplot2)
+line_info <- fread("Data/DRP_Training_Data/DepMap_20Q2_Line_Info.csv")
+ctrp <- fread("Data/DRP_Training_Data/CTRP_AUC_SMILES.txt")
+gdsc2 <- fread("Data/DRP_Training_Data/GDSC2_AUC_SMILES.txt")
+exp <- fread("Data/DRP_Training_Data/DepMap_20Q2_Expression.csv")
+mut <- fread("Data/DRP_Training_Data/DepMap_20Q2_CGC_Mutations_by_Cell.csv")
+cnv <- fread("Data/DRP_Training_Data/DepMap_20Q2_CopyNumber.csv")
+prot <- fread("Data/DRP_Training_Data/DepMap_20Q2_No_NA_ProteinQuant.csv")
+pdb_table <- fread("Data/cell_annotation_table_1.1.1.csv")
+pdb_sub <- pdb_table[, c("CTRPv2.cellid", "CCLE.cellid")]
+pdb_sub <- pdb_sub[!is.na(CTRPv2.cellid) & !is.na(CCLE.cellid)]
+
+
+exp[1:5., 1:5]
+
+length(unique(ctrp$ccl_name))
+length(unique(ctrp$cpd_name))
+
+sum(unique(ctrp$ccl_name) %in% line_info$stripped_cell_line_name) / length(unique(ctrp$ccl_name))
+ccl_names = toupper(ctrp$ccl_name)
+ccl_names = unique(str_replace(ccl_names, "-", ""))
+length(ccl_names)
+
+sum(ccl_names %in% line_info$stripped_cell_line_name) / length(ccl_names)
+
+line_info[!(stripped_cell_line_name %in% ccl_names)]
+ctrp[ccl_name %like% "NIHOVCAR3"]
+ctrp[ccl_name %like% "HEL"]
+
+sum(exp$stripped_cell_line_name %in% pdb_sub$CCLE.cellid) 
+
+# Remove hyphens and convert all to upper case
+pdb_ccl_names = pdb_sub$CCLE.cellid
+pdb_ccl_names = str_replace(toupper(pdb_ccl_names), "-", "")
+
+ctrp$ccl_name = str_replace(toupper(ctrp$ccl_name), "-", "")
+     
+exp_ccl_names = exp$stripped_cell_line_name
+exp_ccl_names = str_replace(toupper(exp_ccl_names), "-", "")
+
+mut_ccl_names = mut$stripped_cell_line_name
+mut_ccl_names = str_replace(toupper(mut_ccl_names), "-", "")
+
+cnv_ccl_names = cnv$stripped_cell_line_name
+cnv_ccl_names = str_replace(toupper(cnv_ccl_names), "-", "")
+
+sum(exp_ccl_names %in% ccl_names) / length(unique(ccl_names))
+sum(exp_ccl_names %in% pdb_ccl_names) / length(unique(pdb_ccl_names))
+
+
+sum(mut_ccl_names %in% ccl_names) / length(unique(ccl_names)) * length(unique(ccl_names))
+sum(mut_ccl_names %in% pdb_ccl_names) / length(unique(pdb_ccl_names)) * length(unique(pdb_ccl_names))
+
+ctrp[ccl_name %in% mut_ccl_names[mut_ccl_names %in% ccl_names]]   ### 302K!!!!! Not 144K
+ctrp[ccl_name %in% mut_ccl_names[mut_ccl_names %in% pdb_ccl_names]]   ### 302K!!!!! Not 144K
+
+sum(cnv_ccl_names %in% ccl_names) / length(unique(ccl_names))
+sum(exp_ccl_names %in% cnv_ccl_names) / length(unique(exp_ccl_names))
+sum(cnv_ccl_names %in% exp_ccl_names) / length(unique(cnv_ccl_names))
+
+
+dir.create(path = "Plots")
+dir.create(path = "Plots/DepMap")
+ggplot(data = line_info) +
+  geom_bar(mapping = aes(x = primary_disease), stat = "count") +
+  xlab("Primary Disease") +
+  ylab("# of cell lines") + 
+  ggtitle(label = "Proportion of Cancer Types in DepMap Data (overall)", subtitle = "20Q2 Version") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(filename = "Plots/DepMap/DepMap_Cell_Lines_Proportion.pdf", device = "pdf")
+  
+prot[, 1:5]
+unique(prot$stripped_cell_line_name)
+
+mut$stripped_cell_line_name = str_replace(toupper(mut$stripped_cell_line_name), "-", "")
+cnv$stripped_cell_line_name = str_replace(toupper(cnv$stripped_cell_line_name), "-", "")
+exp$stripped_cell_line_name = str_replace(toupper(exp$stripped_cell_line_name), "-", "")
+prot$stripped_cell_line_name = str_replace(toupper(prot$stripped_cell_line_name), "-", "")
+ctrp$ccl_name = str_replace(toupper(ctrp$ccl_name), "-", "")
+
+mut_line_info <- line_info[stripped_cell_line_name %in% unique(mut$stripped_cell_line_name)]  
+cnv_line_info <- line_info[stripped_cell_line_name %in% unique(cnv$stripped_cell_line_name)]  
+exp_line_info <- line_info[stripped_cell_line_name %in% unique(exp$stripped_cell_line_name)]  
+prot_line_info <- line_info[stripped_cell_line_name %in% unique(prot$stripped_cell_line_name)]
+ctrp_line_info <- line_info[stripped_cell_line_name %in% unique(ctrp$ccl_name)]
+
+mut_line_info <- mut_line_info[, c("stripped_cell_line_name", "primary_disease")]
+mut_line_info$data_type <- "Mutational"
+
+cnv_line_info <- cnv_line_info[, c("stripped_cell_line_name", "primary_disease")]
+cnv_line_info$data_type <- "Copy Number"
+
+exp_line_info <- exp_line_info[, c("stripped_cell_line_name", "primary_disease")]
+exp_line_info$data_type <- "Gene Expression"
+
+prot_line_info <- prot_line_info[, c("stripped_cell_line_name", "primary_disease")]
+prot_line_info$data_type <- "Protein Quantification"
+
+ctrp_line_info <- ctrp_line_info[, c("stripped_cell_line_name", "primary_disease")]
+ctrp_line_info$data_type <- "Dose-Response"
+
+datatype_line_info <- rbindlist(list(mut_line_info, cnv_line_info, exp_line_info, prot_line_info, ctrp_line_info))
+
+ggplot(data = datatype_line_info) +
+  geom_bar(mapping = aes(x = primary_disease, fill = data_type), stat = "count", position = "dodge") +
+  xlab("Primary Disease") +
+  ylab("# of cell lines") +
+  labs(fill = "Data Type") +
+  ggtitle(label = "Proportion of Cancer Types in DepMap Data", subtitle = "By data type, 20Q2 Version - Overlap with CTRPv2: 79%") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(filename = "Plots/DepMap/DepMap_CTRP_Cell_Lines_Proportion.pdf", device = "pdf")
+
+
+BiocManager::install("VennDiagram")
+require(VennDiagram)
+
+library(RColorBrewer)
+myCol <- brewer.pal(5, "Pastel2")
+
+# NOTE: The CTRPv2 here is from before ctrp was merged with cell line info to add primary disease!
+venn.diagram(x = list(mut_line_info$stripped_cell_line_name,
+                      cnv_line_info$stripped_cell_line_name,
+                      exp_line_info$stripped_cell_line_name,
+                      prot_line_info$stripped_cell_line_name,
+                      unique(ctrp$ccl_name)),
+             category.names = c("Mutational", "Copy Number", "Gene Expression", "Protein Quantification", "CTRPv2 Dose-Response"),
+             filename = "Plots/DepMap/DepMap_CTRP_Cell_Lines_Venn.png",
+             imagetype = "png",
+             output = TRUE,
+             height = 3000 ,
+             width = 3000 ,
+             resolution = 600,
+             # Circles
+             lwd = 2,
+             # lty = 'blank',
+             fill = myCol,
+             # Numbers
+             cex = .6,
+             fontface = "bold",
+             fontfamily = "sans",
+             
+             # Set names
+             cat.cex = 0.6,
+             cat.fontface = "bold",
+             cat.default.pos = "outer",
+             cat.pos = c(0, 0, -130, 150, 0),
+             cat.dist = c(0.2, 0.2, 0.2, 0.2, 0.2),
+             cat.fontfamily = "sans",
+             # rotation = 1
+             
+)

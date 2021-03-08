@@ -6,23 +6,26 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from ray.tune import Trainable
+import ray.tune
 from ray.tune.utils import validate_save_restore
 from torch.utils import data
+import pandas as pd
+from torch.utils.data.sampler import SubsetRandomSampler
 
-from DRPPreparation import drp_create_datasets, drp_main_prep, autoencoder_create_datasets
+from DRPPreparation import drp_create_datasets, drp_main_prep, autoencoder_create_datasets, drp_load_datatypes
 from DataImportModules import OmicData, MorganData
 from Models import DNNAutoEncoder, MultiHeadCNNAutoEncoder, DrugResponsePredictor
 from ModuleLoader import ExtractEncoder
 from TrainFunctions import morgan_train, omic_train, drp_train
 
-file_name_dict = {"drug_file_name": "CTRP_AUC_MORGAN.hdf",
+file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
                   "mut_file_name": "DepMap_20Q2_CGC_Mutations_by_Cell.hdf",
                   "cnv_file_name": "DepMap_20Q2_CopyNumber.hdf",
                   "exp_file_name": "DepMap_20Q2_Expression.hdf",
                   "prot_file_name": "DepMap_20Q2_No_NA_ProteinQuant.hdf",
                   "tum_file_name": "DepMap_20Q2_Line_Info.csv",
-                  "gdsc1_file_name": "GDSC1_AUC_MORGAN.hdf",
-                  "gdsc2_file_name": "GDSC2_AUC_MORGAN.hdf",
+                  "gdsc1_file_name": "GDSC1_AAC_MORGAN.hdf",
+                  "gdsc2_file_name": "GDSC2_AAC_MORGAN.hdf",
                   "mut_embed_file_name": "optimal_autoencoders/MUT_Omic_AutoEncoder_Checkpoint.pt",
                   "cnv_embed_file_name": "optimal_autoencoders/CNV_Omic_AutoEncoder_Checkpoint.pt",
                   "exp_embed_file_name": "optimal_autoencoders/EXP_Omic_AutoEncoder_Checkpoint.pt",
@@ -53,6 +56,8 @@ class MorganTrainable(Trainable):
                                      model_type=self.model_type)
         assert self.train_data.width() == int(
             config["width"]), "The width of the given training set doesn't match the expected Morgan width."
+
+        print("Train data length:", len(self.train_data))
 
         self.train_data, self.train_sampler, self.valid_sampler, \
         self.train_idx, self.valid_idx = autoencoder_create_datasets(train_data=self.train_data)
@@ -139,8 +144,10 @@ class MorganTrainable(Trainable):
         # avg_train_losses.append(train_losses.avg)
         self.sum_train_loss = train_losses.sum
         self.sum_valid_loss = valid_losses.sum
+        self.avg_valid_loss = valid_losses.avg
 
         return {"sum_valid_loss": self.sum_valid_loss,
+                "avg_valid_loss": self.avg_valid_loss,
                 "sum_train_loss": self.sum_train_loss,
                 "time_this_iter_s": duration}
 
@@ -170,6 +177,8 @@ class OmicTrainable(Trainable):
                                    omic_file_name=file_name_dict[config["data_type"] + "_file_name"])
         self.train_data, self.train_sampler, self.valid_sampler, \
         self.train_idx, self.valid_idx = autoencoder_create_datasets(train_data=self.train_data)
+
+        print("Train data length:", len(self.train_data))
 
         # Create data_loaders
         self.train_loader = data.DataLoader(self.train_data, batch_size=config["batch_size"],
@@ -231,8 +240,10 @@ class OmicTrainable(Trainable):
         # avg_train_losses.append(train_losses.avg)
         self.sum_train_loss = train_losses.sum
         self.sum_valid_loss = valid_losses.sum
+        self.avg_valid_loss = valid_losses.avg
 
         return {"sum_valid_loss": self.sum_valid_loss,
+                "avg_valid_loss": self.avg_valid_loss,
                 "sum_train_loss": self.sum_train_loss,
                 "time_this_iter_s": duration}
 
@@ -254,19 +265,41 @@ class OmicTrainable(Trainable):
 class DRPTrainable(Trainable):
     def setup(self, config, checkpoint_dir="/.mounts/labs/steinlab/scratch/ftaj/"):
         self.data_dir = "/home/l/lstein/ftaj/.conda/envs/drp1/Data/DRP_Training_Data/"
+        self.bottleneck_path = "bottleneck_keys.csv"
+        self.bottleneck_keys = None
+        self.bottleneck = config['bottleneck']
+        if config['bottleneck'] is True:
+            try:
+                self.bottleneck_keys = pd.read_csv(self.data_dir + self.bottleneck_path)['keys'].to_list()
+            except:
+                exit("Could not read bottleneck file")
+
+        cur_modules = config["data_types"].split('_')
+        assert "drug" in cur_modules, "Drug data must be provided for drug-response prediction (training or testing)"
+        assert len(cur_modules) > 1, "Data types to be used must be indicated by: mut, cnv, exp, prot and drug"
+
+        # Load data and auto-encoders
+        self.data_list, autoencoder_list, self.key_columns, \
+        self.gpu_locs = drp_load_datatypes(train_file=config['train_file'],
+                                           # module_list=['drug', 'mut', 'cnv', 'exp', 'prot'],
+                                           module_list=cur_modules,
+                                           PATH=self.data_dir,
+                                           file_name_dict=file_name_dict,
+                                           device='cpu')
+        # Extract encoders from loaded auto-encoders
+        self.encoders = [ExtractEncoder(autoencoder) for autoencoder in autoencoder_list]
+
+        # Subset data and auto-encoders based on Trial's data types
+
         self.timestep = 0
         self.config = config
         self.batch_size = self.config["batch_size"]
 
-        # drp_main_prep eventually reads all datatypes to create a 'bottleneck' dataset if requested,
-        # then the indices of desired modules will be used to subset encoders and associated datasets
-        cur_modules = config["data_types"].split('_')
-        prep_gen = drp_main_prep(module_list=cur_modules, train_file=config['train_file'])
-        prep_list = next(prep_gen)
+        # prep_list = drp_main_prep(module_list=cur_modules, train_file=config['train_file'])
 
         # prep but ignore the created model. required_data_indices stems from cur_modules
-        _, self.final_address, self.subset_data, self.subset_keys, self.subset_encoders, \
-        self.data_list, self.key_columns, self.required_data_indices = prep_list
+        # _, _, self.subset_data, self.subset_keys, self.subset_encoders, \
+        # self.data_list, self.key_columns = prep_list
 
         # Determine layer sizes, add final target layer
         cur_layer_sizes = list(np.linspace(self.config['drp_first_layer_size'],
@@ -277,11 +310,11 @@ class DRPTrainable(Trainable):
         # print("len(self.subset_encoders):", len(self.subset_encoders))
 
         # Create variable length argument set for DRP model creation, depending on number of given encoders
-        model_args = [cur_layer_sizes, [0] * len(self.subset_encoders),
+        model_args = [cur_layer_sizes, [0] * len(self.encoders),
                       False, self.config['act_fun'],
                       self.config['batchnorm'],
                       self.config['dropout']]
-        for encoder in self.subset_encoders:
+        for encoder in self.encoders:
             model_args.append(encoder)
         self.cur_model = DrugResponsePredictor(*model_args)
 
@@ -292,23 +325,56 @@ class DRPTrainable(Trainable):
         self.optimizer = optim.Adam(self.cur_model.parameters(), lr=self.config["lr"])
 
         # Then the function will automatically make "new" indices and return them for saving in the checkpoint file
-        # NOTE: The seed is the same, so the same subset is selected every time
-        self.train_data, self.train_sampler, self.valid_sampler, \
-        self.train_idx, self.valid_idx = drp_create_datasets(self.data_list,
+        # NOTE: The seed is the same, so the same subset is selected every time (!)
+        # TODO Cross validation
+        # Load bottleneck and full data once, choose later on
+        self.bottleneck_train_data, \
+        self.bottleneck_cv_folds = drp_create_datasets(self.data_list,
+                                                       self.key_columns,
+                                                       n_folds=config['n_folds'],
+                                                       drug_index=0,
+                                                       drug_dr_column="area_above_curve",
+                                                       class_column_name="primary_disease",
+                                                       subset_type="cell_line",
+                                                       bottleneck_keys=self.bottleneck_keys)
+        self.train_data, self.cv_folds = drp_create_datasets(self.data_list,
                                                              self.key_columns,
+                                                             n_folds=config['n_folds'],
                                                              drug_index=0,
-                                                             drug_dr_column="area_under_curve",
-                                                             test_drug_data=None,
-                                                             bottleneck=config['bottleneck'],
-                                                             required_data_indices=self.required_data_indices)
+                                                             drug_dr_column="area_above_curve",
+                                                             class_column_name="primary_disease",
+                                                             subset_type="cell_line",
+                                                             test_drug_data=None)
 
-        self.train_loader = data.DataLoader(self.train_data, batch_size=self.batch_size,
-                                            sampler=self.train_sampler,
-                                            num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
-        # load validation data in batches 4 times the size
-        self.valid_loader = data.DataLoader(self.train_data, batch_size=self.batch_size * 4,
-                                            sampler=self.valid_sampler,
-                                            num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+        # Create K cross-validation folds which will be selected based on index
+        self.cv_index = config[ray.tune.suggest.repeater.TRIAL_INDEX]
+
+        if config['bottleneck'] is True:
+            # Get train and validation indices for the current fold
+            self.bottleneck_cur_fold = self.bottleneck_cv_folds[self.cv_index]
+            self.bottleneck_cur_train_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[0])
+            self.bottleneck_cur_valid_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[1])
+            # Create data loaders based on current fold's indices
+            self.train_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size,
+                                                sampler=self.bottleneck_cur_train_sampler,
+                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+            # load validation data in batches 4 times the size
+            self.valid_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size * 4,
+                                                sampler=self.bottleneck_cur_valid_sampler,
+                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+        else:
+            self.cur_fold = self.cv_folds[self.cv_index]
+            self.cur_train_sampler = SubsetRandomSampler(self.cur_fold[0])
+            self.cur_valid_sampler = SubsetRandomSampler(self.cur_fold[1])
+
+            # Create data loaders based on current fold's indices
+            self.train_loader = data.DataLoader(self.train_data, batch_size=self.batch_size,
+                                                sampler=self.cur_train_sampler,
+                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+            # load validation data in batches 4 times the size
+            self.valid_loader = data.DataLoader(self.train_data, batch_size=self.batch_size * 4,
+                                                sampler=self.cur_valid_sampler,
+                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
 
     def reset_config(self, new_config):
         try:
@@ -316,13 +382,14 @@ class DRPTrainable(Trainable):
             cur_layer_sizes = list(np.linspace(new_config['drp_first_layer_size'],
                                                new_config['drp_last_layer_size'],
                                                new_config['drp_num_layers']).astype(int))
+
             # Recreate model with new configuration =========
             cur_layer_sizes.append(1)
-            model_args = [cur_layer_sizes, [0] * len(self.subset_encoders),
+            model_args = [cur_layer_sizes, [0] * len(self.encoders),
                           False, new_config['act_fun'],
                           new_config['batchnorm'],
                           new_config['dropout']]
-            for encoder in self.subset_encoders:
+            for encoder in self.encoders:
                 model_args.append(encoder)
             self.cur_model = DrugResponsePredictor(*model_args)
 
@@ -330,17 +397,41 @@ class DRPTrainable(Trainable):
             self.cur_model = self.cur_model.cuda()
             self.criterion = nn.MSELoss().cuda()
             self.optimizer = optim.Adam(self.cur_model.parameters(), lr=new_config["lr"])
+
             # Reset data loaders ==============
-            self.train_loader = data.DataLoader(self.train_data, batch_size=new_config["batch_size"],
-                                                sampler=self.train_sampler,
-                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
-            self.valid_loader = data.DataLoader(self.train_data, batch_size=new_config["batch_size"] * 4,
-                                                sampler=self.valid_sampler,
-                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+            # Create K cross-validation folds which will be selected based on index
+            self.cv_index = new_config[ray.tune.suggest.repeater.TRIAL_INDEX]
+
+            if new_config['bottleneck'] is True:
+                # Get train and validation indices for the current fold
+                self.bottleneck_cur_fold = self.bottleneck_cv_folds[self.cv_index]
+                self.bottleneck_cur_train_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[0])
+                self.bottleneck_cur_valid_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[1])
+                # Create data loaders based on current fold's indices
+                self.train_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size,
+                                                    sampler=self.bottleneck_cur_train_sampler,
+                                                    num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+                # load validation data in batches 4 times the size
+                self.valid_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size * 4,
+                                                    sampler=self.bottleneck_cur_valid_sampler,
+                                                    num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+            else:
+                self.cur_fold = self.cv_folds[self.cv_index]
+                self.cur_train_sampler = SubsetRandomSampler(self.cur_fold[0])
+                self.cur_valid_sampler = SubsetRandomSampler(self.cur_fold[1])
+
+                # Create data loaders based on current fold's indices
+                self.train_loader = data.DataLoader(self.train_data, batch_size=self.batch_size,
+                                                    sampler=self.cur_train_sampler,
+                                                    num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+                # load validation data in batches 4 times the size
+                self.valid_loader = data.DataLoader(self.train_data, batch_size=self.batch_size * 4,
+                                                    sampler=self.cur_valid_sampler,
+                                                    num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
 
             return True
-
         except:
+            # If reset_config fails, catch exception and force Ray to make a new actor
             return False
 
     def step(self):
@@ -349,16 +440,17 @@ class DRPTrainable(Trainable):
 
         train_losses, valid_losses = drp_train(train_loader=self.train_loader, valid_loader=self.valid_loader,
                                                cur_model=self.cur_model,
-                                               criterion=self.criterion, optimizer=self.optimizer, epoch=self.timestep,
-                                               train_len=len(self.train_idx), valid_len=len(self.valid_idx),
-                                               batch_size=self.config["batch_size"])
+                                               criterion=self.criterion, optimizer=self.optimizer, epoch=self.timestep)
 
         duration = time.time() - start_time
         self.sum_train_loss = train_losses.sum
         self.sum_valid_loss = valid_losses.sum
+        self.avg_valid_loss = valid_losses.avg
 
         return {"sum_valid_loss": self.sum_valid_loss,
+                "avg_valid_loss": self.avg_valid_loss,
                 "sum_train_loss": self.sum_train_loss,
+                "num_samples": len(self.train_loader) * self.train_loader.batch_size,
                 "time_this_iter_s": duration}
 
     def save_checkpoint(self, tmp_checkpoint_dir):
@@ -451,10 +543,8 @@ class FullModelTrainable(Trainable):
         self.train_idx, self.valid_idx = drp_create_datasets(self.data_list,
                                                              self.key_columns,
                                                              drug_index=0,
-                                                             drug_dr_column="area_under_curve",
-                                                             test_drug_data=None,
-                                                             bottleneck=True,
-                                                             required_data_indices=self.required_data_indices)
+                                                             drug_dr_column="area_above_curve",
+                                                             test_drug_data=None)
 
         self.train_loader = data.DataLoader(self.train_data, batch_size=self.batch_size,
                                             sampler=self.train_sampler,
@@ -496,9 +586,7 @@ class FullModelTrainable(Trainable):
         start_time = time.time()
         train_losses, valid_losses = drp_train(train_loader=self.train_loader, valid_loader=self.valid_loader,
                                                cur_model=self.cur_model,
-                                               criterion=self.criterion, optimizer=self.optimizer, epoch=self.timestep,
-                                               train_len=len(self.train_idx), valid_len=len(self.valid_idx),
-                                               batch_size=self.config["batch_size"])
+                                               criterion=self.criterion, optimizer=self.optimizer, epoch=self.timestep)
 
         duration = time.time() - start_time
         self.sum_valid_loss = valid_losses.sum

@@ -11,6 +11,43 @@ from captum.attr import IntegratedGradients, DeepLiftShap, GradientShap
 # import matplotlib
 import matplotlib.pyplot as plt
 
+cur_modules_combos = [['drug', 'mut'],
+                      ['drug', 'mut', 'cnv'],
+                      ['drug', 'mut', 'cnv', 'exp'],
+                      ['drug', 'mut', 'cnv', 'exp', 'prot'],
+                      ['drug', 'mut', 'cnv', 'prot'],
+                      ['drug', 'mut', 'exp'],
+                      ['drug', 'mut', 'exp', 'prot'],
+                      ['drug', 'mut', 'prot'],
+                      ['drug', 'cnv'],
+                      ['drug', 'cnv', 'exp'],
+                      ['drug', 'cnv', 'exp', 'prot'],
+                      ['drug', 'cnv', 'prot'],
+                      ['drug', 'exp'],
+                      ['drug', 'exp', 'prot'],
+                      ['drug', 'prot']]
+
+import itertools
+path = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/"
+cur_device = "cpu"
+cur_modules = ['drug', 'mut', 'cnv', 'exp', 'prot']
+
+stuff = ["mut", "cnv", "exp", "prot"]
+subset = ["mut", "cnv", "exp", "prot"]
+bottleneck = False
+for L in range(0, len(stuff)+1):
+    for subset in itertools.combinations(stuff, L):
+        print(subset)
+        if subset == ():
+            continue
+        prep_list = drp_main_prep(module_list=['drug']+list(subset), train_file="CTRP_AAC_MORGAN_512.hdf", path=path, device=cur_device)
+        _, _, subset_data, subset_keys, subset_encoders, \
+            data_list, key_columns = prep_list
+        train_data, cv_folds = drp_create_datasets(data_list, key_columns, drug_index=0, drug_dr_column="area_above_curve",
+                                                   class_column_name="primary_disease",
+                                                   test_drug_data=None, n_folds=10, subset_type="cell_line", verbose=True)
+        print("Train len:", len(train_data))
+        data_list[0].full_train
 
 # Helper method to print importances and visualize distribution
 def visualize_importances(feature_names, importances, title="Average Feature Importances", top_n=10, plot=True,
@@ -40,7 +77,7 @@ def interpret(args):
         path = "/home/l/lstein/ftaj/.conda/envs/drp1/Data/DRP_Training_Data/"
         cur_device = "cuda"
     else:
-        path = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/"
+        path = "/Data/DRP_Training_Data/"
         cur_device = "cpu"
 
     data_types = '_'.join(args.data_types)
@@ -50,19 +87,17 @@ def interpret(args):
     cur_model.float()
 
     cur_modules = ['drug', 'mut', 'cnv', 'exp', 'prot']
-    prep_gen = drp_main_prep(module_list=cur_modules, train_file="CTRP_AUC_MORGAN_512.hdf", path=path, device=cur_device)
+
+    prep_gen = drp_main_prep(module_list=cur_modules, train_file="CTRP_AAC_MORGAN_512.hdf", path=path, device=cur_device)
     prep_list = next(prep_gen)
     _, final_address, subset_data, subset_keys, subset_encoders, \
         data_list, key_columns, required_data_indices = prep_list
 
     train_data, train_sampler, valid_sampler, \
-        train_idx, valid_idx = drp_create_datasets(data_list,
-                                                   key_columns,
-                                                   drug_index=0,
-                                                   drug_dr_column="area_under_curve",
-                                                   test_drug_data=None,
-                                                   bottleneck=bottleneck,
+        train_idx, valid_idx = drp_create_datasets(data_list, key_columns, drug_index=0, drug_dr_column="area_above_curve",
+                                                   test_drug_data=None, bottleneck=bottleneck,
                                                    required_data_indices=[0, 1, 2, 3, 4])
+
 
     train_loader = data.DataLoader(train_data, batch_size=int(args.sample_size),
                                    sampler=train_sampler,

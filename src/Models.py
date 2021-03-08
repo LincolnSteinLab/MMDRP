@@ -4,11 +4,11 @@ import torch.nn as nn
 from CustomPytorchLayers import CustomCoder, CustomDense, CustomCNN
 
 
-# activation_dict = nn.ModuleDict({
-#                 'lrelu': nn.LeakyReLU(),
-#                 'prelu': nn.PReLU(),
-#                 'relu': nn.ReLU(),
-#                 'none': nn.Identity()
+# activation_dict = NeuralNets.ModuleDict({
+#                 'lrelu': NeuralNets.LeakyReLU(),
+#                 'prelu': NeuralNets.PReLU(),
+#                 'relu': NeuralNets.ReLU(),
+#                 'none': NeuralNets.Identity()
 #         })
 
 # from torchinfo import summary
@@ -19,14 +19,14 @@ from CustomPytorchLayers import CustomCoder, CustomDense, CustomCNN
 # summary(temp, input_size=(19100,), batch_dim=None)
 # temp = MultiHeadCNNAutoEncoder(num_branch=3, code_layer_size=None, kernel_size_list=[3, 5, 11], in_channels=1,
 #                       out_channels_list=[1, 1, 1], batchnorm_list=[False, False, False], stride_list=[2, 2, 2],
-#                       act_fun=nn.ReLU(), dropout_list=[0., 0., 0.], encode=None)
+#                       act_fun=NeuralNets.ReLU(), dropout_list=[0., 0., 0.], encode=None)
 
 
 # temp = MultiHeadCNNAutoEncoder(input_size=27000, first_layer_size=8196, code_layer_size=1024, code_layer=True, num_layers=4, batchnorm_list=[True]*4,
-#                    act_fun=[nn.ReLU(), nn.ReLU(),nn.ReLU(),nn.ReLU()], encode=True)
+#                    act_fun=[NeuralNets.ReLU(), NeuralNets.ReLU(),NeuralNets.ReLU(),NeuralNets.ReLU()], encode=True)
 # temp = MultiHeadCNNAutoEncoder(num_branch=3, code_layer_size=None, kernel_size_list=[3, 5, 11], in_channels=1,
 #                       out_channels_list=[1, 1, 1], batchnorm_list=[False, False, False], stride_list=[2, 2, 2],
-#                       act_fun=nn.ReLU(), dropout_list=[0., 0., 0.], encode=None)
+#                       act_fun=NeuralNets.ReLU(), dropout_list=[0., 0., 0.], encode=None)
 # torchsummary.summary(temp, input_size=(1, 512))
 
 
@@ -69,18 +69,18 @@ class DNNAutoEncoder(nn.Module):
         # if tied:
         #     # Tie/Mirror the weights
         #     # Initialize weights for each layer
-        #     torch.nn.init.xavier_uniform_(self.encoder1.dense.weight)
-        #     self.decoder3.dense.weight = nn.Parameter(self.encoder1.dense.weight.transpose(0, 1))
+        #     torch.NeuralNets.init.xavier_uniform_(self.encoder1.dense.weight)
+        #     self.decoder3.dense.weight = NeuralNets.Parameter(self.encoder1.dense.weight.transpose(0, 1))
         #
-        #     torch.nn.init.xavier_uniform_(self.encoder2.dense.weight)
-        #     self.decoder2.dense.weight = nn.Parameter(self.encoder2.dense.weight.transpose(0, 1))
+        #     torch.NeuralNets.init.xavier_uniform_(self.encoder2.dense.weight)
+        #     self.decoder2.dense.weight = NeuralNets.Parameter(self.encoder2.dense.weight.transpose(0, 1))
         #
-        #     torch.nn.init.xavier_uniform_(self.encoder3.dense.weight)
-        #     self.decoder1.dense.weight = nn.Parameter(self.encoder3.dense.weight.transpose(0, 1))
+        #     torch.NeuralNets.init.xavier_uniform_(self.encoder3.dense.weight)
+        #     self.decoder1.dense.weight = NeuralNets.Parameter(self.encoder3.dense.weight.transpose(0, 1))
 
         # self.dense_tum1 = CustomDense(input_size=256, hidden_size=64)
         # self.dense_tum2 = CustomDense(input_size=64, hidden_size=tum_dim)
-        # self.softmax_tum = nn.Softmax(dim=tum_dim)
+        # self.softmax_tum = NeuralNets.Softmax(dim=tum_dim)
 
     def forward(self, x):
         enc = self.encoder(x)
@@ -205,7 +205,7 @@ class MultiHeadCNNAutoEncoder(nn.Module):
         #         num_branch = np.linspace(first_layer_size, code_layer_size, num_layers).astype(int)
         #
         #     # Create and add CNN layers TODO
-        #     self.coder = nn.ModuleList([CustomCNN(in_channels_list[0], out_channels_list[0],
+        #     self.coder = NeuralNets.ModuleList([CustomCNN(in_channels_list[0], out_channels_list[0],
         #                                           kernel_size_list[0], act_fun=act_fun[0],
         #                                           batch_norm=batchnorm_list[0], dropout=dropout_list[0])])
         #     self.coder.extend([CustomCNN(in_channels_list[i], out_channels_list[i],
@@ -213,7 +213,7 @@ class MultiHeadCNNAutoEncoder(nn.Module):
         #                                  dropout=dropout_list[i]) for i in range(len(num_branch) - 1)])
         #
         # else:
-        #     self.coder = nn.ModuleList([CustomCNN(in_channels_list[i], out_channels_list[i],
+        #     self.coder = NeuralNets.ModuleList([CustomCNN(in_channels_list[i], out_channels_list[i],
         #                                           kernel_size_list[i], act_fun=act_fun[i],
         #                                           batch_norm=batchnorm_list[i],
         #                                           dropout=dropout_list[i]) for i in range(len(num_branch) - 1)])
@@ -294,7 +294,7 @@ class DrugResponsePredictor(nn.Module):
                       range(len(self.layer_sizes) - 1)]
         if self.gpu_locs is not None:
             # TODO: setup model-parallel multi-gpu here
-            # Note: nn.ModuleList modules are not connected together in any way, so cannot use instead of nn.Sequential!
+            # Note: NeuralNets.ModuleList modules are not connected together in any way, so cannot use instead of NeuralNets.Sequential!
             self.drp_module = nn.Sequential(*drp_layers).cuda()
         else:
             # drp_layers = [CustomDense(input_size=self.layer_sizes[i],
@@ -378,7 +378,7 @@ class FullDrugResponsePredictorTest(nn.Module):
                                self.encoders]
 
         # Convert Python list to torch.ModuleList so that torch can 'see' the parameters of each module
-        # self.encoder_list = nn.ModuleList(self.encoder_list)
+        # self.encoder_list = NeuralNets.ModuleList(self.encoder_list)
 
         # The size of the input to the first layer is the sum of the sizes of the outputs of the encoder layers
         self.encoder_out_sizes = [output.shape[1] for output in encoder_outputs]
@@ -387,11 +387,11 @@ class FullDrugResponsePredictorTest(nn.Module):
         self.layer_sizes = [self.drp_input_size] + layer_sizes
 
         if self.gpu_locs is not None:
-            # self.drp_module = nn.ModuleList([CustomDense(input_size=self.layer_sizes[i],
+            # self.drp_module = NeuralNets.ModuleList([CustomDense(input_size=self.layer_sizes[i],
             #                                              hidden_size=self.layer_sizes[i + 1]) for i in
             #                                  range(len(self.layer_sizes) - 1)])
 
-            # Note: nn.ModuleList modules are not connected together in any way, so cannot use instead of nn.Sequential!
+            # Note: NeuralNets.ModuleList modules are not connected together in any way, so cannot use instead of NeuralNets.Sequential!
             drp_layers = [CustomDense(input_size=self.layer_sizes[i],
                                       hidden_size=self.layer_sizes[i + 1], name="drp_layer_" + str(i)) for i in
                           range(len(self.layer_sizes) - 1)]
@@ -402,7 +402,7 @@ class FullDrugResponsePredictorTest(nn.Module):
                                       hidden_size=self.layer_sizes[i + 1], name="drp_layer_" + str(i)) for i in
                           range(len(self.layer_sizes) - 1)]
             self.drp_module = nn.Sequential(*drp_layers).to("cpu")
-            # self.drp_module = nn.ModuleList([CustomDense(input_size=self.layer_sizes[i],
+            # self.drp_module = NeuralNets.ModuleList([CustomDense(input_size=self.layer_sizes[i],
             #                                              hidden_size=self.layer_sizes[i + 1]) for i in
             #                                  range(len(self.layer_sizes) - 1)])
 

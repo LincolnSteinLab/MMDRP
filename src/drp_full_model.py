@@ -17,6 +17,7 @@ import torch.optim as optim
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
+from ray.tune.suggest import Repeater
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from torch.utils import data
 
@@ -26,7 +27,7 @@ from DataImportModules import DRCurveData
 from Models import DrugResponsePredictor
 from ModuleLoader import ExtractEncoder
 from TrainFunctions import drp_train
-from Tune.TuneTrainables import FullModelTrainable, DRPTrainable
+from TuneTrainables import FullModelTrainable, DRPTrainable
 
 # NUM_CPU = multiprocessing.cpu_count()
 # print("# of CPUs:", NUM_CPU)
@@ -36,14 +37,14 @@ use_cuda = torch.cuda.is_available()
 if use_cuda:
     print('CUDA is available. # of GPUs:', torch.cuda.device_count())
 
-file_name_dict = {"drug_file_name": "CTRP_AUC_MORGAN.hdf",
+file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
                   "mut_file_name": "DepMap_20Q2_CGC_Mutations_by_Cell.hdf",
                   "cnv_file_name": "DepMap_20Q2_CopyNumber.hdf",
                   "exp_file_name": "DepMap_20Q2_Expression.hdf",
                   "prot_file_name": "DepMap_20Q2_No_NA_ProteinQuant.hdf",
                   "tum_file_name": "DepMap_20Q2_Line_Info.csv",
-                  "gdsc1_file_name": "GDSC1_AUC_MORGAN.hdf",
-                  "gdsc2_file_name": "GDSC2_AUC_MORGAN.hdf",
+                  "gdsc1_file_name": "GDSC1_AAC_MORGAN.hdf",
+                  "gdsc2_file_name": "GDSC2_AAC_MORGAN.hdf",
                   "mut_embed_file_name": "optimal_autoencoders/MUT_Omic_AutoEncoder_Checkpoint",
                   "cnv_embed_file_name": "optimal_autoencoders/CNV_Omic_AutoEncoder_Checkpoint",
                   "exp_embed_file_name": "optimal_autoencoders/EXP_Omic_AutoEncoder_Checkpoint",
@@ -99,7 +100,7 @@ def test(args):
 
     test_data = DRCurveData(path=PATH, file_name=args.test, key_column="ccl_name",
                             morgan_column="morgan",
-                            target_column="area_under_curve")
+                            target_column="area_above_curve")
 
     # name_tag = args.name_tag
     # data_time = AverageMeter('Data', ':6.3f')
@@ -155,13 +156,13 @@ def test(args):
         if bool(int(args.bottleneck)) is True:
             print("Creating bottle-necked data...")
             test_loader = drp_create_datasets(data_list, key_columns, int(args.batch_size), drug_index=0,
-                                              drug_dr_column="area_under_curve", test_drug_data=test_data,
+                                              drug_dr_column="area_above_curve", test_drug_data=test_data,
                                               bottleneck=True,
                                               required_data_indices=required_data_indices)
         else:
             # Subset of data and associated keys change for each combination, but not the test drug response curve data
             test_loader = drp_create_datasets(subset_data, subset_keys, int(args.batch_size), drug_index=0,
-                                              drug_dr_column="area_under_curve", test_drug_data=test_data)
+                                              drug_dr_column="area_above_curve", test_drug_data=test_data)
         # Create the model
         cur_model = DrugResponsePredictor(layer_sizes=[2048, 1024, 512, 1], gpu_locs=subset_gpu_locs,
                                           encoder_requires_grad=bool(int(args.encoder_train)))
@@ -362,7 +363,7 @@ def train_full_model(args):
                                                                                                  train_idx=check_train_idx,
                                                                                                  valid_idx=check_valid_idx,
                                                                                                  drug_index=0,
-                                                                                                 drug_dr_column="area_under_curve",
+                                                                                                 drug_dr_column="area_above_curve",
                                                                                                  test_drug_data=None,
                                                                                                  bottleneck=bool(int(
                                                                                                      args.bottleneck)),
@@ -371,7 +372,7 @@ def train_full_model(args):
             # Then the function will automatically make new indices and return them for saving in the checkpoint file
             train_data, train_sampler, valid_sampler, train_idx, valid_idx = drp_create_datasets(data_list, key_columns,
                                                                                                  drug_index=0,
-                                                                                                 drug_dr_column="area_under_curve",
+                                                                                                 drug_dr_column="area_above_curve",
                                                                                                  test_drug_data=None,
                                                                                                  bottleneck=bool(int(
                                                                                                      args.bottleneck)),
@@ -449,7 +450,7 @@ def train_full_model(args):
         # torch.save(cur_model, checkpoint_dir + '/' + final_address + '_' + args.name_tag + "_DRP_Checkpoint.pt")
 
 
-def hypopt(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=6.0):
+def hypopt(num_samples: int = 10, max_num_epochs: int = 100, gpus_per_trial: float = 1.0, cpus_per_trial: float = 6.0):
     if args.machine == "cluster":
         local_dir = "/.mounts/labs/steinlab/scratch/ftaj/"
     elif args.machine == "mist":
@@ -468,7 +469,7 @@ def hypopt(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_tria
         config = {
             "train_file": args.train_file,
             "data_types": '_'.join(args.data_types),
-            "bottleneck": bool(int(args.bottleneck)),
+            "bottleneck": tune.choice([True, False]),
             "mut_first_layer_size": tune.randint(2 ** 7, 2 ** 10),
             "mut_code_layer_size": tune.randint(2 ** 6, 2 ** 9),
             "mut_num_layers": tune.randint(2, 4),
@@ -512,7 +513,9 @@ def hypopt(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_tria
         config = {
             "train_file": args.train_file,
             "data_types": '_'.join(args.data_types),
-            "bottleneck": bool(int(args.bottleneck)),
+            "bottleneck": tune.choice([True, False]),
+            # NOTE: n_folds should only have one possibility
+            "n_folds": int(args.n_folds),
             "drp_first_layer_size": tune.randint(2 ** 9, 6000),
             "drp_last_layer_size": tune.randint(2 ** 8, 1000),
             "drp_num_layers": tune.randint(2, 5),
@@ -526,6 +529,8 @@ def hypopt(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_tria
             "train_file": args.train_file,
             "data_types": '_'.join(args.data_types),
             "bottleneck": True,
+            # NOTE: n_folds should only have one possibility
+            "n_folds": int(args.n_folds),
             "drp_first_layer_size": 5980,
             "drp_last_layer_size": 314,
             "drp_num_layers": 4,
@@ -536,66 +541,21 @@ def hypopt(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_tria
             "batch_size": 32
         }]
 
-    # test_config = {
-    #     # "morgan_first_layer_size": tune.randint(2 ** 9, 1024),
-    #     # "morgan_code_layer_size": tune.randint(2 ** 8, 512),
-    #     # "morgan_num_layers": tune.randint(2, 4),
-    #     "train_file": args.train_file,
-    #     "mut_first_layer_size": tune.randint(2 ** 7, 2 ** 8),
-    #     "mut_code_layer_size": tune.randint(2 ** 6, 2 ** 7),
-    #     "mut_num_layers": tune.randint(2, 4),
-    #     "cnv_first_layer_size": tune.randint(2 ** 9, 1024),
-    #     "cnv_code_layer_size": tune.randint(2 ** 8, 512),
-    #     "cnv_num_layers": tune.randint(2, 4),
-    #     "exp_first_layer_size": tune.randint(2 ** 9, 1024),
-    #     "exp_code_layer_size": tune.randint(2 ** 8, 512),
-    #     "exp_num_layers": tune.randint(2, 4),
-    #     "prot_first_layer_size": tune.randint(2 ** 9, 1024),
-    #     "prot_code_layer_size": tune.randint(2 ** 8, 512),
-    #     "prot_num_layers": tune.randint(2, 4),
-    #     "drp_first_layer_size": tune.randint(2 ** 9, 1024),
-    #     "drp_last_layer_size": tune.randint(2 ** 8, 512),
-    #     "drp_num_layers": tune.randint(2, 5),
-    #     "lr": tune.loguniform(1e-4, 1e-3),
-    #     "batch_size": tune.choice([4, 8, 16, 32])
-    # }
+    # Must NOT use an early-stopping TrialScheduler when performing cross-validation
+    if int(args.n_folds) == 1:
+        scheduler = ASHAScheduler(
+            grace_period=3,
+            reduction_factor=3,
+            brackets=3)
+        search_algo = HyperOptSearch(points_to_evaluate=current_best_parameters)
+    else:
+        scheduler = None
+        search_algo = Repeater(HyperOptSearch(points_to_evaluate=current_best_parameters),
+                               repeat=int(args.n_folds), set_index=True)
 
-    # config_space = CS.ConfigurationSpace()
-    # config_space.add_hyperparameter(
-    #     CS.UniformIntegerHyperparameter("first_layer_size", lower=1024, upper=8192))
-    # config_space.add_hyperparameter(
-    #     CS.UnFinal file nameiformIntegerHyperparameter("last_layer_size", lower=256, upper=4096))
-    # config_space.add_hyperparameter(
-    #     CS.UniformIntegerHyperparameter("num_layers", lower=2, upper=5))
-    # config_space.add_hyperparameter(
-    #     CS.UniformFloatHyperparameter("lr", lower=1e-4, upper=1e-3))
-    # config_space.add_hyperparameter(
-    #     CS.UniformIntegerHyperparameter("batch_size", lower=4, upper=32))
-
-    # scheduler = HyperBandForBOHB(
-    #     time_attr="training_iteration", metric="sum_valid_loss", mode="min", reduction_factor=4,
-    #     max_t=max_num_epochs)
-    scheduler = ASHAScheduler(
-        grace_period=3,
-        reduction_factor=3,
-        brackets=3)
-
-    # bohb_search = TuneBOHB(
-    #     space=config_space,  # If you want to set the space manually
-    #     metric="sum_valid_loss",
-    #     mode="min",
-    #     max_concurrent=4)
-    # df_search = DragonflySearch(
-    #     domain="euclidean",
-    #     max_concurrent=4,
-    #     # space=space,  # If you want to set the space manually
-    # )
-    # ax_search = AxSearch(parameter_constraints=["first_layer_size >= last_layer_size"])
-    # hyperopt_search = HyperOptSearch(points_to_evaluate=current_best_parameters)
-    hyperopt_search = HyperOptSearch(points_to_evaluate=current_best_parameters)
     reporter = CLIReporter(
-        # parameter_columns=["l1", "l2", "lr", "batch_size"],
-        metric_columns=["sum_valid_loss", "sum_train_loss", "training_iteration", "time_this_iter_s"])
+        metric_columns=["sum_valid_loss", "avg_valid_loss", "sum_train_loss", "training_iteration", "num_samples", "time_this_iter_s"])
+
     if bool(int(args.full)) is True:
         tag = "FullModel"
         cur_trainable = FullModelTrainable
@@ -622,7 +582,7 @@ def hypopt(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_tria
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        search_alg=hyperopt_search,
+        search_alg=search_algo,
         progress_reporter=reporter,
         metric='sum_valid_loss',
         mode='min',
@@ -652,11 +612,13 @@ if __name__ == "__main__":
     parser.add_argument('--init_cpus', help='Number of Total CPUs to use for ray.init', required=False)
     parser.add_argument('--init_gpus', help='Number of Total GPUs to use for ray.init', required=False)
     parser.add_argument('--gpus_per_trial', help="Can be a float between 0 and 1, or higher", default="1.0")
+    parser.add_argument('--n_folds', help="Number of folds to use in cross validation", default="10")
     parser.add_argument('--num_samples',
                         help="Number of samples drawn from parameter combinations", required=False)
     # parser.add_argument('--fp_width', help="Width of the drug fingerprints used")
     parser.add_argument('--full', help="whether to optimize all modules (full) or just the DRP module itself",
                         default='0')
+
 
     parser.add_argument('--data_types', nargs="+", help='List of data types to be used in training this DRP model')
     parser.add_argument('--bottleneck',
@@ -664,7 +626,7 @@ if __name__ == "__main__":
                         default="0")
 
     # Training parameters ###
-    parser.add_argument('--train_file', help='Name of file used for training model, e.g. CTRP AUC data.')
+    parser.add_argument('--train_file', help='Name of file used for training model, e.g. CTRP AAC data.')
     parser.add_argument('--num_epochs', help='Number of epochs to run', required=False)
     parser.add_argument('--batch_size', help='Size of each training batch', required=False)
     parser.add_argument('--resume',
