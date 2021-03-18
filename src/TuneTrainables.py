@@ -2,21 +2,19 @@ import os
 import time
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from ray.tune import Trainable
-import ray.tune
 from ray.tune.utils import validate_save_restore
 from torch.utils import data
-import pandas as pd
-from torch.utils.data.sampler import SubsetRandomSampler
 
 from DRPPreparation import drp_create_datasets, drp_main_prep, autoencoder_create_datasets, drp_load_datatypes
 from DataImportModules import OmicData, MorganData
 from Models import DNNAutoEncoder, MultiHeadCNNAutoEncoder, DrugResponsePredictor
 from ModuleLoader import ExtractEncoder
-from TrainFunctions import morgan_train, omic_train, drp_train
+from TrainFunctions import morgan_train, omic_train, drp_train, drp_cross_validate
 
 file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
                   "mut_file_name": "DepMap_20Q2_CGC_Mutations_by_Cell.hdf",
@@ -347,37 +345,44 @@ class DRPTrainable(Trainable):
                                                              test_drug_data=None)
 
         # Create K cross-validation folds which will be selected based on index
-        self.cv_index = config[ray.tune.suggest.repeater.TRIAL_INDEX]
+        # self.cv_index = config[ray.tune.suggest.repeater.TRIAL_INDEX]
 
         if config['bottleneck'] is True:
             # Get train and validation indices for the current fold
-            self.bottleneck_cur_fold = self.bottleneck_cv_folds[self.cv_index]
-            self.bottleneck_cur_train_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[0])
-            self.bottleneck_cur_valid_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[1])
-            # Create data loaders based on current fold's indices
-            self.train_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size,
-                                                sampler=self.bottleneck_cur_train_sampler,
-                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
-            # load validation data in batches 4 times the size
-            self.valid_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size * 4,
-                                                sampler=self.bottleneck_cur_valid_sampler,
-                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
-        else:
-            self.cur_fold = self.cv_folds[self.cv_index]
-            self.cur_train_sampler = SubsetRandomSampler(self.cur_fold[0])
-            self.cur_valid_sampler = SubsetRandomSampler(self.cur_fold[1])
+            self.cur_cv_folds = self.bottleneck_cv_folds
+            self.cur_train_data = self.bottleneck_train_data
 
-            # Create data loaders based on current fold's indices
-            self.train_loader = data.DataLoader(self.train_data, batch_size=self.batch_size,
-                                                sampler=self.cur_train_sampler,
-                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
-            # load validation data in batches 4 times the size
-            self.valid_loader = data.DataLoader(self.train_data, batch_size=self.batch_size * 4,
-                                                sampler=self.cur_valid_sampler,
-                                                num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+            # self.bottleneck_cur_fold = self.bottleneck_cv_folds[self.cv_index]
+            # self.bottleneck_cur_train_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[0])
+            # self.bottleneck_cur_valid_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[1])
+            # # Create data loaders based on current fold's indices
+            # self.train_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size,
+            #                                     sampler=self.bottleneck_cur_train_sampler,
+            #                                     num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+            # # load validation data in batches 4 times the size
+            # self.valid_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size * 4,
+            #                                     sampler=self.bottleneck_cur_valid_sampler,
+            #                                     num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+        else:
+            self.cur_cv_folds = self.cv_folds
+            self.cur_train_data = self.train_data
+
+            # self.cur_fold = self.cv_folds[self.cv_index]
+            # self.cur_train_sampler = SubsetRandomSampler(self.cur_fold[0])
+            # self.cur_valid_sampler = SubsetRandomSampler(self.cur_fold[1])
+            #
+            # # Create data loaders based on current fold's indices
+            # self.train_loader = data.DataLoader(self.train_data, batch_size=self.batch_size,
+            #                                     sampler=self.cur_train_sampler,
+            #                                     num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+            # # load validation data in batches 4 times the size
+            # self.valid_loader = data.DataLoader(self.train_data, batch_size=self.batch_size * 4,
+            #                                     sampler=self.cur_valid_sampler,
+            #                                     num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
 
     def reset_config(self, new_config):
         try:
+            self.batch_size = self.config["batch_size"]
             # Determine layer sizes, add final target layer
             cur_layer_sizes = list(np.linspace(new_config['drp_first_layer_size'],
                                                new_config['drp_last_layer_size'],
@@ -400,34 +405,40 @@ class DRPTrainable(Trainable):
 
             # Reset data loaders ==============
             # Create K cross-validation folds which will be selected based on index
-            self.cv_index = new_config[ray.tune.suggest.repeater.TRIAL_INDEX]
+            # self.cv_index = new_config[ray.tune.suggest.repeater.TRIAL_INDEX]
 
             if new_config['bottleneck'] is True:
-                # Get train and validation indices for the current fold
-                self.bottleneck_cur_fold = self.bottleneck_cv_folds[self.cv_index]
-                self.bottleneck_cur_train_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[0])
-                self.bottleneck_cur_valid_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[1])
-                # Create data loaders based on current fold's indices
-                self.train_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size,
-                                                    sampler=self.bottleneck_cur_train_sampler,
-                                                    num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
-                # load validation data in batches 4 times the size
-                self.valid_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size * 4,
-                                                    sampler=self.bottleneck_cur_valid_sampler,
-                                                    num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
-            else:
-                self.cur_fold = self.cv_folds[self.cv_index]
-                self.cur_train_sampler = SubsetRandomSampler(self.cur_fold[0])
-                self.cur_valid_sampler = SubsetRandomSampler(self.cur_fold[1])
+                self.cur_cv_folds = self.bottleneck_cv_folds
+                self.cur_train_data = self.bottleneck_train_data
 
-                # Create data loaders based on current fold's indices
-                self.train_loader = data.DataLoader(self.train_data, batch_size=self.batch_size,
-                                                    sampler=self.cur_train_sampler,
-                                                    num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
-                # load validation data in batches 4 times the size
-                self.valid_loader = data.DataLoader(self.train_data, batch_size=self.batch_size * 4,
-                                                    sampler=self.cur_valid_sampler,
-                                                    num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+                # # Get train and validation indices for the current fold
+                # self.bottleneck_cur_fold = self.bottleneck_cv_folds[self.cv_index]
+                # self.bottleneck_cur_train_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[0])
+                # self.bottleneck_cur_valid_sampler = SubsetRandomSampler(self.bottleneck_cur_fold[1])
+                # # Create data loaders based on current fold's indices
+                # self.train_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size,
+                #                                     sampler=self.bottleneck_cur_train_sampler,
+                #                                     num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+                # # load validation data in batches 4 times the size
+                # self.valid_loader = data.DataLoader(self.bottleneck_train_data, batch_size=self.batch_size * 4,
+                #                                     sampler=self.bottleneck_cur_valid_sampler,
+                #                                     num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+            else:
+                self.cur_cv_folds = self.cv_folds
+                self.cur_train_data = self.train_data
+
+                # self.cur_fold = self.cv_folds[self.cv_index]
+                # self.cur_train_sampler = SubsetRandomSampler(self.cur_fold[0])
+                # self.cur_valid_sampler = SubsetRandomSampler(self.cur_fold[1])
+                #
+                # # Create data loaders based on current fold's indices
+                # self.train_loader = data.DataLoader(self.train_data, batch_size=self.batch_size,
+                #                                     sampler=self.cur_train_sampler,
+                #                                     num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+                # # load validation data in batches 4 times the size
+                # self.valid_loader = data.DataLoader(self.train_data, batch_size=self.batch_size * 4,
+                #                                     sampler=self.cur_valid_sampler,
+                #                                     num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
 
             return True
         except:
@@ -438,19 +449,29 @@ class DRPTrainable(Trainable):
         self.timestep += 1
         start_time = time.time()
 
-        train_losses, valid_losses = drp_train(train_loader=self.train_loader, valid_loader=self.valid_loader,
-                                               cur_model=self.cur_model,
-                                               criterion=self.criterion, optimizer=self.optimizer, epoch=self.timestep)
+        self.all_sum_train_losses,\
+        self.all_sum_valid_losses,\
+        self.all_avg_valid_losses = drp_cross_validate(train_data=self.cur_train_data,
+                                                       cv_folds=self.cur_cv_folds,
+                                                       batch_size=self.batch_size,
+                                                       cur_model=self.cur_model,
+                                                       criterion=self.criterion,
+                                                       optimizer=self.optimizer,
+                                                       epoch=self.timestep,
+                                                       NUM_WORKERS=NUM_WORKERS)
+        # train_losses, valid_losses = drp_train(train_loader=self.train_loader, valid_loader=self.valid_loader,
+        #                                        cur_model=self.cur_model,
+        #                                        criterion=self.criterion, optimizer=self.optimizer, epoch=self.timestep)
 
         duration = time.time() - start_time
-        self.sum_train_loss = train_losses.sum
-        self.sum_valid_loss = valid_losses.sum
-        self.avg_valid_loss = valid_losses.avg
+        self.sum_cv_train_loss = sum(self.all_sum_train_losses)
+        self.sum_cv_valid_loss = sum(self.all_sum_valid_losses)
+        self.avg_cv_valid_loss = sum(self.all_sum_valid_losses) / len(self.all_sum_valid_losses)
 
-        return {"sum_valid_loss": self.sum_valid_loss,
-                "avg_valid_loss": self.avg_valid_loss,
-                "sum_train_loss": self.sum_train_loss,
-                "num_samples": len(self.train_loader) * self.train_loader.batch_size,
+        return {"sum_cv_valid_loss": self.sum_cv_valid_loss,
+                "sum_cv_train_loss": self.sum_cv_train_loss,
+                "avg_cv_valid_loss": self.avg_cv_valid_loss,
+                "num_samples": len(self.cur_cv_folds[0][0]),
                 "time_this_iter_s": duration}
 
     def save_checkpoint(self, tmp_checkpoint_dir):

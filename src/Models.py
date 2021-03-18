@@ -43,15 +43,6 @@ class DNNAutoEncoder(nn.Module):
             Warning("Incorrect batchnorm argument, defaulting to False")
             batchnorm_list = [False] * num_layers
 
-        # Determine the activation function as a whole for this DNN
-        # if act_fun is None or act_fun == "none":
-        #     act_fun = activation_dict['none']
-        # elif act_fun in ['relu', 'prelu', 'lrelu']:
-        #     act_fun = activation_dict[act_fun]
-        # else:
-        #     Warning("Incorrect act_fun argument, defaulting to ReLU")
-        #     act_fun = activation_dict['relu']
-
         if dropout is None or dropout == "none" or dropout == 0.0:
             dropout_list = [0.0] * num_layers
         else:
@@ -65,22 +56,6 @@ class DNNAutoEncoder(nn.Module):
                                    code_layer_size=code_layer_size, num_layers=num_layers, encode=False,
                                    code_layer=False, act_fun=act_fun, batchnorm_list=batchnorm_list,
                                    dropout_list=dropout_list, name=name)
-        # self.encoder.coder[0].dense.weight
-        # if tied:
-        #     # Tie/Mirror the weights
-        #     # Initialize weights for each layer
-        #     torch.NeuralNets.init.xavier_uniform_(self.encoder1.dense.weight)
-        #     self.decoder3.dense.weight = NeuralNets.Parameter(self.encoder1.dense.weight.transpose(0, 1))
-        #
-        #     torch.NeuralNets.init.xavier_uniform_(self.encoder2.dense.weight)
-        #     self.decoder2.dense.weight = NeuralNets.Parameter(self.encoder2.dense.weight.transpose(0, 1))
-        #
-        #     torch.NeuralNets.init.xavier_uniform_(self.encoder3.dense.weight)
-        #     self.decoder1.dense.weight = NeuralNets.Parameter(self.encoder3.dense.weight.transpose(0, 1))
-
-        # self.dense_tum1 = CustomDense(input_size=256, hidden_size=64)
-        # self.dense_tum2 = CustomDense(input_size=64, hidden_size=tum_dim)
-        # self.softmax_tum = NeuralNets.Softmax(dim=tum_dim)
 
     def forward(self, x):
         enc = self.encoder(x)

@@ -542,19 +542,22 @@ def hypopt(num_samples: int = 10, max_num_epochs: int = 100, gpus_per_trial: flo
         }]
 
     # Must NOT use an early-stopping TrialScheduler when performing cross-validation
-    if int(args.n_folds) == 1:
-        scheduler = ASHAScheduler(
-            grace_period=3,
-            reduction_factor=3,
-            brackets=3)
-        search_algo = HyperOptSearch(points_to_evaluate=current_best_parameters)
-    else:
-        scheduler = None
-        search_algo = Repeater(HyperOptSearch(points_to_evaluate=current_best_parameters),
-                               repeat=int(args.n_folds), set_index=True)
+    # if int(args.n_folds) == 1:
+    # print("Will NOT perform cross-validation")
+    scheduler = ASHAScheduler(
+        grace_period=3,
+        reduction_factor=3,
+        brackets=3)
+    search_algo = HyperOptSearch(points_to_evaluate=current_best_parameters)
+    # else:
+    #     # print("Will perform cross-validation with Ray's Repeater Class")
+    #     print("Will perform manual cross-validation")
+    #     scheduler = None
+    #     search_algo = Repeater(HyperOptSearch(points_to_evaluate=current_best_parameters),
+    #                            repeat=int(args.n_folds), set_index=True)
 
     reporter = CLIReporter(
-        metric_columns=["sum_valid_loss", "avg_valid_loss", "sum_train_loss", "training_iteration", "num_samples", "time_this_iter_s"])
+        metric_columns=["sum_cv_valid_loss", "avg_cv_valid_loss", "sum_cv_train_loss", "training_iteration", "num_samples", "time_this_iter_s"])
 
     if bool(int(args.full)) is True:
         tag = "FullModel"
@@ -584,7 +587,7 @@ def hypopt(num_samples: int = 10, max_num_epochs: int = 100, gpus_per_trial: flo
         scheduler=scheduler,
         search_alg=search_algo,
         progress_reporter=reporter,
-        metric='sum_valid_loss',
+        metric='sum_cv_valid_loss',
         mode='min',
         keep_checkpoints_num=1,
         stop={"training_iteration": max_num_epochs},
@@ -665,9 +668,9 @@ if __name__ == "__main__":
             "Data/DRP_Training_Data/" + args.train_file), "Given train file could not be found in main directory"
 
     # Create a checkpoint directory based on given name_tag if it doesn't exist
-    if not os.path.exists(args.name_tag):
-        print("Creating checkpoint directory:", args.name_tag)
-        os.makedirs(args.name_tag)
+    # if not os.path.exists(args.name_tag):
+    #     print("Creating checkpoint directory:", args.name_tag)
+    #     os.makedirs(args.name_tag)
 
     # Path("/" + args.name_tag).mkdir(exist_ok=True)
 

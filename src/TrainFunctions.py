@@ -1,5 +1,8 @@
 import time
 import torch
+from torch.utils import data
+from torch.utils.data import SubsetRandomSampler
+
 from CustomFunctions import AverageMeter
 from DataImportModules import AutoEncoderPrefetcher, DataPrefetcher
 
@@ -281,3 +284,35 @@ def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch
 
     return train_losses, valid_losses
 
+
+def drp_cross_validate(train_data, cv_folds, batch_size: int, NUM_WORKERS: int, cur_model, criterion, optimizer,
+                       epoch: int, verbose: bool = False):
+    n_folds = len(cv_folds)
+
+    all_sum_train_losses = []
+    all_sum_valid_losses = []
+    all_avg_valid_losses = []
+    for cv_index in range(n_folds):
+        cur_fold = cv_folds[cv_index]
+        cur_train_sampler = SubsetRandomSampler(cur_fold[0])
+        cur_valid_sampler = SubsetRandomSampler(cur_fold[1])
+
+        # Create data loaders based on current fold's indices
+        train_loader = data.DataLoader(train_data, batch_size=batch_size,
+                                            sampler=cur_train_sampler,
+                                            num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+        # load validation data in batches 4 times the size
+        valid_loader = data.DataLoader(train_data, batch_size=batch_size * 4,
+                                            sampler=cur_valid_sampler,
+                                            num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+
+        train_losses, valid_losses = drp_train(train_loader=train_loader, valid_loader=valid_loader,
+                                               cur_model=cur_model,
+                                               criterion=criterion, optimizer=optimizer, epoch=epoch,
+                                               verbose=verbose)
+
+        all_sum_train_losses.append(train_losses.sum)
+        all_sum_valid_losses.append(valid_losses.sum)
+        all_avg_valid_losses.append(valid_losses.avg)
+
+    return all_sum_train_losses, all_sum_valid_losses, all_avg_valid_losses
