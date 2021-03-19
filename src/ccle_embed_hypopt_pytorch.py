@@ -153,8 +153,8 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             "first_layer_size": tune.randint(2 ** 9, 10005),
             "code_layer_size": tune.randint(2 ** 8, 6005),
             "num_layers": tune.randint(2, 5),
-            "batchnorm": tune.choice([True, False]),
-            "act_fun": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
+            "batchnorm_list": tune.choice([True, False]),
+            "act_fun_list": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
             "lr": tune.loguniform(1e-4, 1e-3),
             "batch_size": tune.randint(4, 32)
         }
@@ -164,8 +164,8 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
                 'first_layer_size': 9479,
                 'code_layer_size': 797,
                 'num_layers': 2,
-                "batchnorm": False,
-                "act_fun": 'relu',
+                "batchnorm_list": False,
+                "act_fun_list": 'relu',
                 "lr": 0.0001124,
                 "batch_size": 5
             }]
@@ -175,8 +175,8 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
                 'first_layer_size': 2356,
                 'code_layer_size': 532,
                 'num_layers': 2,
-                "batchnorm": False,
-                "act_fun": 'relu',
+                "batchnorm_list": False,
+                "act_fun_list": 'relu',
                 "lr": 0.0001076,
                 "batch_size": 5
             }]
@@ -188,8 +188,8 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             "first_layer_size": tune.randint(2 ** 7, 2 ** 10),
             "code_layer_size": tune.randint(2 ** 6, 2 ** 9),
             "num_layers": tune.randint(2, 5),
-            "batchnorm": tune.choice([True, False]),
-            "act_fun": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
+            "batchnorm_list": tune.choice([True, False]),
+            "act_fun_list": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
             "lr": tune.loguniform(1e-4, 1e-3),
             "batch_size": tune.randint(4, 32)
         }
@@ -198,8 +198,8 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             'first_layer_size': 763,
             'code_layer_size': 500,
             'num_layers': 2,
-            "batchnorm": False,
-            "act_fun": 'relu',
+            "batchnorm_list": False,
+            "act_fun_list": 'relu',
             "lr": 0.0002672,
             "batch_size": 32
         }]
@@ -212,8 +212,8 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             "first_layer_size": tune.randint(2 ** 9, 6000),
             "code_layer_size": tune.randint(2 ** 8, 5000),
             "num_layers": tune.randint(2, 5),
-            "batchnorm": tune.choice([True, False]),
-            "act_fun": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
+            "batchnorm_list": tune.choice([True, False]),
+            "act_fun_list": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
             "lr": tune.loguniform(1e-4, 1e-3),
             "batch_size": tune.randint(4, 32)
         }
@@ -222,8 +222,8 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             'first_layer_size': 2530,
             'code_layer_size': 1875,
             'num_layers': 2,
-            "batchnorm": False,
-            "act_fun": 'relu',
+            "batchnorm_list": False,
+            "act_fun_list": 'relu',
             "lr": 0.00010036,
             "batch_size": 31
         }]
@@ -339,8 +339,8 @@ if __name__ == '__main__':
     parser.add_argument('--first_layer_size', required=False)
     parser.add_argument('--code_layer_size', required=False)
     parser.add_argument('--num_layers', required=False)
-    parser.add_argument('--batchnorm', required=False)
-    parser.add_argument('--act_fun', required=False)
+    parser.add_argument('--batchnorm_list', required=False)
+    parser.add_argument('--act_fun_list', required=False)
     parser.add_argument('--batch_size', required=False)
     parser.add_argument('--lr', required=False)
 
@@ -363,8 +363,8 @@ if __name__ == '__main__':
         best_config = {'first_layer_size': int(args.first_layer_size),
                        'code_layer_size': int(args.code_layer_size),
                        'num_layers': int(args.num_layers),
-                       'batchnorm': bool(int(args.batchnorm)),
-                       'act_fun': args.act_fun,
+                       'batchnorm_list': bool(int(args.batchnorm)),
+                       'act_fun_list': args.act_fun,
                        'batch_size': int(args.batch_size),
                        'lr': float(args.lr)
                        }

@@ -78,7 +78,7 @@ class CustomCoder(nn.Module):
 
     def __init__(self, input_size, coder_layer_sizes: list = None, first_layer_size: int = None,
                  code_layer_size: int = None, code_layer: bool = False, num_layers: int = None,
-                 batchnorm_list=None, act_fun: str = None, dropout_list=None,
+                 batchnorm_list=None, act_fun_list: str = None, dropout_list=None,
                  encode: bool = True, name: str = ""):
         super(CustomCoder, self).__init__()
 
@@ -95,8 +95,11 @@ class CustomCoder(nn.Module):
         else:
             assert len(dropout_list) == num_layers, "Length of dropout_list should be the same as the number of layers"
 
+        if act_fun_list is None:
+            act_fun_list = [None] * num_layers
+
         self.batchnorm_list = batchnorm_list
-        self.act_fun = act_fun
+        self.act_fun = act_fun_list
         self.dropout_list = dropout_list
 
         self.input_size = input_size
@@ -118,16 +121,16 @@ class CustomCoder(nn.Module):
 
             # The first layer should take the data input width and then continue until the code layer
             self.coder = [CustomDense(input_size=self.input_size, hidden_size=coder_layer_sizes[0],
-                                      act_fun=act_fun, batch_norm=batchnorm_list[0],
+                                      act_fun=act_fun_list[0], batch_norm=batchnorm_list[0],
                                       dropout=dropout_list[0], name="encoder_0_" + name)] + \
                          [CustomDense(input_size=coder_layer_sizes[i], hidden_size=coder_layer_sizes[i + 1],
-                                      act_fun=act_fun, batch_norm=batchnorm_list[i + 1],
+                                      act_fun=act_fun_list[0], batch_norm=batchnorm_list[i + 1],
                                       dropout=dropout_list[i + 1], name="encoder_" + str(i) + '_' + name) for i in
                           range(len(coder_layer_sizes) - 2)]
 
             if code_layer is True:
                 self.coder += [CustomDense(input_size=coder_layer_sizes[-2], hidden_size=coder_layer_sizes[-1],
-                                           act_fun=act_fun, batch_norm=batchnorm_list[-1],
+                                           act_fun=act_fun_list[-1], batch_norm=batchnorm_list[-1],
                                            dropout=dropout_list[-1], name="code_layer_" + name)]
 
             self.coder = nn.Sequential(*self.coder)
@@ -143,14 +146,14 @@ class CustomCoder(nn.Module):
             if code_layer is True:
                 # Input to the code layer is simply from the layer after (mirror of the layer before)
                 self.coder += [CustomDense(input_size=coder_layer_sizes[1], hidden_size=coder_layer_sizes[0],
-                                           act_fun=act_fun, batch_norm=batchnorm_list_rev[0],
+                                           act_fun=act_fun_list[0], batch_norm=batchnorm_list_rev[0],
                                            dropout=dropout_list_rev[0], name="code_layer_" + name)]
             self.coder += [CustomDense(input_size=coder_layer_sizes[i], hidden_size=coder_layer_sizes[i + 1],
-                                       act_fun=act_fun, batch_norm=batchnorm_list_rev[i + 1],
+                                       act_fun=act_fun_list[i + 1], batch_norm=batchnorm_list_rev[i + 1],
                                        dropout=dropout_list_rev[i + 1], name="decoder_" + str(i) + '_' + name) for i in
                            range(len(coder_layer_sizes) - 1)] + \
                           [CustomDense(input_size=coder_layer_sizes[-1], hidden_size=self.input_size,
-                                       act_fun=act_fun, batch_norm=batchnorm_list_rev[-1],
+                                       act_fun=act_fun_list[-1], batch_norm=batchnorm_list_rev[-1],
                                        dropout=dropout_list_rev[-1], name="decoder_last_" + name)]
             self.coder = nn.Sequential(*self.coder)
 
@@ -191,5 +194,5 @@ class CustomCNN(nn.Module):
 
 # class DeepCNNAutoEncoder(NeuralNets.Module):
 #     def __init__(self, num_branch, code_layer_size=None, kernel_size_list=None, in_channels=1,
-#                  out_channels_list=None, batchnorm_list=None, act_fun=None, dropout_list=None, encode=True):
+#                  out_channels_list=None, batchnorm_list=None, act_fun_list=None, dropout_list=None, encode=True):
 #         super(DeepCNNAutoEncoder, self).__init__()

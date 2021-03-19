@@ -520,9 +520,9 @@ def hypopt(num_samples: int = 10, max_num_epochs: int = 100, gpus_per_trial: flo
             "drp_last_layer_size": tune.randint(2 ** 8, 1000),
             "drp_num_layers": tune.randint(2, 5),
             "lr": tune.loguniform(1e-4, 1e-3),
-            "batchnorm": tune.choice([True, False]),
-            "act_fun": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
-            "dropout": tune.uniform(0, 0.25),
+            "batchnorm_list": tune.choice([True, False]),
+            "act_fun_list": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
+            "dropout_list": tune.uniform(0, 0.25),
             "batch_size": tune.choice([4, 8, 16, 32])
         }
         current_best_parameters = [{
@@ -535,9 +535,9 @@ def hypopt(num_samples: int = 10, max_num_epochs: int = 100, gpus_per_trial: flo
             "drp_last_layer_size": 314,
             "drp_num_layers": 4,
             "lr": 0.000116483,
-            "batchnorm": True,
-            "act_fun": 'lrelu',
-            "dropout": 0.0016931,
+            "batchnorm_list": True,
+            "act_fun_list": 'lrelu',
+            "dropout_list": 0.0016931,
             "batch_size": 32
         }]
 
@@ -655,9 +655,9 @@ if __name__ == "__main__":
     parser.add_argument('--drp_last_layer_size')
     parser.add_argument('--drp_num_layers')
     parser.add_argument('--lr')
-    parser.add_argument('--batchnorm')
-    parser.add_argument('--act_fun')
-    parser.add_argument('--dropout')
+    parser.add_argument('--batchnorm_list')
+    parser.add_argument('--act_fun_list')
+    parser.add_argument('--dropout_list')
 
     # parser.add_argument("--drug_file_name", help="Address of the drug SMILES + DR targets used for model evaluation")
 

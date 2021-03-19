@@ -36,6 +36,24 @@ file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
 NUM_WORKERS = 0
 
 
+def get_layer_configs(config, model_type="dnn"):
+    all_act_funcs = []
+    all_batch_norm = []
+    all_dropout = []
+    num_layers_or_branch = ""
+    if model_type == "dnn":
+        num_layers_or_branch = "num_layers"
+    else:
+        num_layers_or_branch = "num_branch"
+
+    for i in range(config[num_layers_or_branch]):
+        all_act_funcs.append(config['activation_' + str(i + 1)])
+        all_batch_norm.append(config['batch_norm_' + str(i + 1)])
+        all_dropout.append(config['dropout_' + str(i + 1)])
+
+    return all_act_funcs, all_batch_norm, all_dropout
+
+
 class MorganTrainable(Trainable):
     def setup(self, config, checkpoint_dir="/.mounts/labs/steinlab/scratch/ftaj/"):
         self.data_dir = "/home/l/lstein/ftaj/.conda/envs/drp1/Data/DRP_Training_Data/"
@@ -69,22 +87,24 @@ class MorganTrainable(Trainable):
 
         # Prepare model =========
         if self.model_type == "cnn":
+            all_act_funcs, all_batch_norm, all_dropout = get_layer_configs(self.config, model_type="cnn")
             self.cur_model = MultiHeadCNNAutoEncoder(
                 input_width=int(self.config["width"]),
                 num_branch=self.config["num_branch"],
                 stride=self.config["stride"],
-                batchnorm=self.config["batchnorm"],
-                act_fun=self.config["act_fun"],
-                dropout=self.config["dropout"]
+                batchnorm_list=all_batch_norm,
+                act_fun_list=all_act_funcs,
+                dropout_list=all_dropout
             )
         else:
+            all_act_funcs, all_batch_norm, all_dropout = get_layer_configs(self.config, model_type="dnn")
             self.cur_model = DNNAutoEncoder(input_dim=int(self.config["width"]),
                                             first_layer_size=self.config["first_layer_size"],
                                             code_layer_size=self.config["code_layer_size"],
                                             num_layers=self.config["num_layers"],
-                                            batchnorm=self.config["batchnorm"],
-                                            act_fun=self.config["act_fun"],
-                                            dropout=self.config['dropout'])
+                                            batchnorm_list=all_batch_norm,
+                                            act_fun_list=all_act_funcs,
+                                            dropout_list=all_dropout)
 
         self.cur_model = self.cur_model.float()
         self.cur_model = self.cur_model.cuda()
@@ -95,23 +115,26 @@ class MorganTrainable(Trainable):
         try:
             # Reset model with new_config ==============
             if self.model_type == "cnn":
+                all_act_funcs, all_batch_norm, all_dropout = get_layer_configs(self.config, model_type="cnn")
                 self.cur_model = MultiHeadCNNAutoEncoder(
                     input_width=int(new_config["width"]),
                     num_branch=new_config["num_branch"],
                     stride=new_config["stride"],
-                    batchnorm=new_config["batchnorm"],
-                    act_fun=new_config["act_fun"],
-                    dropout=new_config["dropout"]
+                    batchnorm_list=all_batch_norm,
+                    act_fun_list=all_act_funcs,
+                    dropout_list=all_dropout
                 )
             else:
-                self.cur_model = DNNAutoEncoder(input_dim=int(new_config["width"]),
-                                                first_layer_size=new_config["first_layer_size"],
-                                                code_layer_size=new_config["code_layer_size"],
-                                                num_layers=new_config["num_layers"],
-                                                batchnorm=new_config["batchnorm"],
-                                                act_fun=new_config["act_fun"],
-                                                dropout=new_config['dropout'])
-
+                all_act_funcs, all_batch_norm, all_dropout = get_layer_configs(self.config, model_type="dnn")
+                self.cur_model = DNNAutoEncoder(
+                    input_dim=int(new_config["width"]),
+                    first_layer_size=new_config["first_layer_size"],
+                    code_layer_size=new_config["code_layer_size"],
+                    num_layers=new_config["num_layers"],
+                    batchnorm_list=all_batch_norm,
+                    act_fun_list=all_act_funcs,
+                    dropout_list=all_dropout
+                )
             self.cur_model = self.cur_model.float()
             self.cur_model = self.cur_model.cuda()
             self.criterion = nn.MSELoss().cuda()
@@ -191,8 +214,8 @@ class OmicTrainable(Trainable):
                                         first_layer_size=self.config["first_layer_size"],
                                         code_layer_size=self.config["code_layer_size"],
                                         num_layers=self.config["num_layers"],
-                                        batchnorm=self.config["batchnorm"],
-                                        act_fun=self.config["act_fun"])
+                                        batchnorm_list=self.config["batchnorm_list"],
+                                        act_fun_list=self.config["act_fun_list"])
 
         self.cur_model = self.cur_model.float()
         self.cur_model = self.cur_model.cuda()
@@ -206,8 +229,8 @@ class OmicTrainable(Trainable):
                                             first_layer_size=new_config["first_layer_size"],
                                             code_layer_size=new_config["code_layer_size"],
                                             num_layers=new_config["num_layers"],
-                                            batchnorm=new_config["batchnorm"],
-                                            act_fun=new_config["act_fun"])
+                                            batchnorm_list=new_config["batchnorm_list"],
+                                            act_fun_list=new_config["act_fun_list"])
 
             self.cur_model = self.cur_model.float()
             self.cur_model = self.cur_model.cuda()
@@ -309,9 +332,9 @@ class DRPTrainable(Trainable):
 
         # Create variable length argument set for DRP model creation, depending on number of given encoders
         model_args = [cur_layer_sizes, [0] * len(self.encoders),
-                      False, self.config['act_fun'],
-                      self.config['batchnorm'],
-                      self.config['dropout']]
+                      False, self.config['act_fun_list'],
+                      self.config['batchnorm_list'],
+                      self.config['dropout_list']]
         for encoder in self.encoders:
             model_args.append(encoder)
         self.cur_model = DrugResponsePredictor(*model_args)
@@ -391,9 +414,9 @@ class DRPTrainable(Trainable):
             # Recreate model with new configuration =========
             cur_layer_sizes.append(1)
             model_args = [cur_layer_sizes, [0] * len(self.encoders),
-                          False, new_config['act_fun'],
-                          new_config['batchnorm'],
-                          new_config['dropout']]
+                          False, new_config['act_fun_list'],
+                          new_config['batchnorm_list'],
+                          new_config['dropout_list']]
             for encoder in self.encoders:
                 model_args.append(encoder)
             self.cur_model = DrugResponsePredictor(*model_args)

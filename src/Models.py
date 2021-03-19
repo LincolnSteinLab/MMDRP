@@ -19,42 +19,40 @@ from CustomPytorchLayers import CustomCoder, CustomDense, CustomCNN
 # summary(temp, input_size=(19100,), batch_dim=None)
 # temp = MultiHeadCNNAutoEncoder(num_branch=3, code_layer_size=None, kernel_size_list=[3, 5, 11], in_channels=1,
 #                       out_channels_list=[1, 1, 1], batchnorm_list=[False, False, False], stride_list=[2, 2, 2],
-#                       act_fun=NeuralNets.ReLU(), dropout_list=[0., 0., 0.], encode=None)
+#                       act_fun_list=NeuralNets.ReLU(), dropout_list=[0., 0., 0.], encode=None)
 
 
 # temp = MultiHeadCNNAutoEncoder(input_size=27000, first_layer_size=8196, code_layer_size=1024, code_layer=True, num_layers=4, batchnorm_list=[True]*4,
-#                    act_fun=[NeuralNets.ReLU(), NeuralNets.ReLU(),NeuralNets.ReLU(),NeuralNets.ReLU()], encode=True)
+#                    act_fun_list=[NeuralNets.ReLU(), NeuralNets.ReLU(),NeuralNets.ReLU(),NeuralNets.ReLU()], encode=True)
 # temp = MultiHeadCNNAutoEncoder(num_branch=3, code_layer_size=None, kernel_size_list=[3, 5, 11], in_channels=1,
 #                       out_channels_list=[1, 1, 1], batchnorm_list=[False, False, False], stride_list=[2, 2, 2],
-#                       act_fun=NeuralNets.ReLU(), dropout_list=[0., 0., 0.], encode=None)
+#                       act_fun_list=NeuralNets.ReLU(), dropout_list=[0., 0., 0.], encode=None)
 # torchsummary.summary(temp, input_size=(1, 512))
 
 
 class DNNAutoEncoder(nn.Module):
-    def __init__(self, input_dim, first_layer_size, code_layer_size, num_layers, batchnorm=None,
-                 act_fun=None, dropout=0.0, name=""):
+    def __init__(self, input_dim, first_layer_size, code_layer_size, num_layers, batchnorm_list=None,
+                 act_fun_list=None, dropout_list=0.0, name=""):
         super(DNNAutoEncoder, self).__init__()
         # Determine batch norm as a whole for this DNN
-        if batchnorm is None or batchnorm is False:
+        if batchnorm_list is None or batchnorm_list is False:
             batchnorm_list = [False] * num_layers
-        elif batchnorm is True:
+        elif batchnorm_list is True:
             batchnorm_list = [True] * num_layers
         else:
-            Warning("Incorrect batchnorm argument, defaulting to False")
+            Warning("Incorrect batchnorm_list argument, defaulting to False for all layers")
             batchnorm_list = [False] * num_layers
 
-        if dropout is None or dropout == "none" or dropout == 0.0:
+        if dropout_list is None or dropout_list == "none" or dropout_list == 0.0:
             dropout_list = [0.0] * num_layers
-        else:
-            dropout_list = [dropout] * num_layers
 
         self.encoder = CustomCoder(input_size=input_dim, first_layer_size=first_layer_size,
                                    code_layer_size=code_layer_size, num_layers=num_layers, encode=True,
-                                   code_layer=True, act_fun=act_fun, batchnorm_list=batchnorm_list,
+                                   code_layer=True, act_fun_list=act_fun_list, batchnorm_list=batchnorm_list,
                                    dropout_list=dropout_list, name=name)
         self.decoder = CustomCoder(input_size=input_dim, first_layer_size=first_layer_size,
                                    code_layer_size=code_layer_size, num_layers=num_layers, encode=False,
-                                   code_layer=False, act_fun=act_fun, batchnorm_list=batchnorm_list,
+                                   code_layer=False, act_fun_list=act_fun_list, batchnorm_list=batchnorm_list,
                                    dropout_list=dropout_list, name=name)
 
     def forward(self, x):
@@ -75,8 +73,9 @@ class MultiHeadCNNAutoEncoder(nn.Module):
     scan the same layers, similar to the Inception CNN architecture.
     """
 
-    def __init__(self, input_width, num_branch=3, stride=None, in_channels=1,
-                 out_channels_list=None, batchnorm=None, act_fun=None, dropout=None):
+    def __init__(self, input_width: int, num_branch: int = 3, stride: int = None, in_channels: int = 1,
+                 out_channels_list: [] = None, batchnorm_list: [] = None, act_fun_list: [] = None,
+                 dropout_list: [] = None):
         super(MultiHeadCNNAutoEncoder, self).__init__()
 
         # Formula for creating odd-sized kernels from 3 based on given num_branch
@@ -85,19 +84,22 @@ class MultiHeadCNNAutoEncoder(nn.Module):
         self.input_width = input_width
 
         # Check layer-wise parameters
-        if batchnorm is None or batchnorm is False:
-            batchnorm = [False] * num_branch
+        if batchnorm_list is None or batchnorm_list is False:
+            batchnorm_list = [False] * num_branch
         else:
-            batchnorm = [True] * num_branch
-        self.batchnorm_list = batchnorm
+            assert len(batchnorm_list) == num_branch, "batchnorm_list length should be the same as num_branch"
+        self.batchnorm_list = batchnorm_list
 
-        act_fun_list = [act_fun] * num_branch
+        if act_fun_list is None:
+            act_fun_list = [None] * num_branch
+        else:
+            assert len(act_fun_list) == num_branch, "act_fun_list length should be the same as num_branch"
         self.act_fun_list = act_fun_list
 
-        if dropout is None:
+        if dropout_list is None:
             dropout_list = [0.] * num_branch
         else:
-            dropout_list = [dropout] * num_branch
+            assert len(dropout_list) == num_branch, "dropout_list length should be the same as num_branch"
         self.dropout_list = dropout_list
 
         if out_channels_list is None:
@@ -116,7 +118,7 @@ class MultiHeadCNNAutoEncoder(nn.Module):
 
         self.encoder_branches = nn.ModuleList([
             CustomCNN(in_channels, out_channels_list[i],
-                      kernel_size_list[i], act_fun=act_fun_list[i], batch_norm=batchnorm[i], stride=stride_list[i],
+                      kernel_size_list[i], act_fun=act_fun_list[i], batch_norm=batchnorm_list[i], stride=stride_list[i],
                       dropout=dropout_list[i], padding=self.padding_list[i], name="cnn_encoder_" + str(i)) for i in
             range(num_branch)
         ])
@@ -133,12 +135,11 @@ class MultiHeadCNNAutoEncoder(nn.Module):
                       name="code_out_" + str(i)) for _ in
             range(num_branch) for i in range(num_branch)
         ])
-        # self.code_layer.append(torch.cat())
 
         # Mirror everything for the decoder
         out_channels_list_rev = out_channels_list[::-1]
         act_fun_list_rev = act_fun_list[::-1]
-        batchnorm_list_rev = batchnorm[::-1]
+        batchnorm_list_rev = batchnorm_list[::-1]
         dropout_list_rev = dropout_list[::-1]
         kernel_size_list_rev = kernel_size_list[::-1]
         padding_list_rev = self.padding_list[::-1]
@@ -181,20 +182,20 @@ class MultiHeadCNNAutoEncoder(nn.Module):
         #
         #     # Create and add CNN layers TODO
         #     self.coder = NeuralNets.ModuleList([CustomCNN(in_channels_list[0], out_channels_list[0],
-        #                                           kernel_size_list[0], act_fun=act_fun[0],
-        #                                           batch_norm=batchnorm_list[0], dropout=dropout_list[0])])
+        #                                           kernel_size_list[0], act_fun_list=act_fun_list[0],
+        #                                           batch_norm=batchnorm_list[0], dropout_list=dropout_list[0])])
         #     self.coder.extend([CustomCNN(in_channels_list[i], out_channels_list[i],
-        #                                  kernel_size_list[i], act_fun=act_fun[i], batch_norm=batchnorm_list[i],
-        #                                  dropout=dropout_list[i]) for i in range(len(num_branch) - 1)])
+        #                                  kernel_size_list[i], act_fun_list=act_fun_list[i], batch_norm=batchnorm_list[i],
+        #                                  dropout_list=dropout_list[i]) for i in range(len(num_branch) - 1)])
         #
         # else:
         #     self.coder = NeuralNets.ModuleList([CustomCNN(in_channels_list[i], out_channels_list[i],
-        #                                           kernel_size_list[i], act_fun=act_fun[i],
+        #                                           kernel_size_list[i], act_fun_list=act_fun_list[i],
         #                                           batch_norm=batchnorm_list[i],
-        #                                           dropout=dropout_list[i]) for i in range(len(num_branch) - 1)])
+        #                                           dropout_list=dropout_list[i]) for i in range(len(num_branch) - 1)])
         #     self.coder.extend([CustomCNN(in_channels_list[0], out_channels_list[0],
-        #                                  kernel_size_list[0], act_fun=act_fun[0],
-        #                                  batch_norm=batchnorm_list[0], dropout=dropout_list[0])])
+        #                                  kernel_size_list[0], act_fun_list=act_fun_list[0],
+        #                                  batch_norm=batchnorm_list[0], dropout_list=dropout_list[0])])
 
 
 class DrugResponsePredictor(nn.Module):
@@ -215,7 +216,7 @@ class DrugResponsePredictor(nn.Module):
         elif batchnorm is True:
             batchnorm_list = [True] * len(layer_sizes)
         else:
-            Warning("Incorrect batchnorm argument, defaulting to False")
+            Warning("Incorrect batchnorm_list argument, defaulting to False")
             batchnorm_list = [False] * len(layer_sizes)
 
         self.encoders = encoders
@@ -224,7 +225,7 @@ class DrugResponsePredictor(nn.Module):
         self.layer_sizes = layer_sizes
         self.encoder_requires_grad = encoder_requires_grad
 
-        # Ensure encoders' weights are frozen (for batchnorm to work properly)
+        # Ensure encoders' weights are frozen (for batchnorm_list to work properly)
         for encoder in self.encoders:
             for param in encoder.parameters():
                 param.requires_grad = self.encoder_requires_grad
@@ -324,7 +325,7 @@ class FullDrugResponsePredictorTest(nn.Module):
         self.layer_sizes = layer_sizes
         self.encoder_requires_grad = encoder_requires_grad
 
-        # Ensure encoders' weights are frozen (for batchnorm to work properly)
+        # Ensure encoders' weights are frozen (for batchnorm_list to work properly)
         for encoder in self.encoders:
             for param in encoder.parameters():
                 param.requires_grad = self.encoder_requires_grad

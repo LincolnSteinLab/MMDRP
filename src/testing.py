@@ -18,9 +18,9 @@ cnn_model = MultiHeadCNNAutoEncoder(
     input_width=4096,
     num_branch=3,
     stride=2,
-    batchnorm=True,
-    act_fun='prelu',
-    dropout=0.163313
+    batchnorm_list=True,
+    act_fun_list='prelu',
+    dropout_list=0.163313
 )
 
 writer = SummaryWriter('runs/cnn_model')

@@ -12,9 +12,9 @@ from ray.tune.schedulers import ASHAScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from torch.utils import data
 
-from DRP.src.DataImportModules import MorganData
+from DataImportModules import MorganData
 from Models import DNNAutoEncoder
-from DRP.src.TrainFunctions import morgan_train
+from TrainFunctions import morgan_train
 from TuneTrainables import MorganTrainable
 
 print("Current working directory is:", os.getcwd())
@@ -100,10 +100,22 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             "width": tune.choice(["512", "1024", "2048", "4096"]),
             "first_layer_size": tune.randint(2 ** 7, 2 ** 12),
             "code_layer_size": tune.randint(2 ** 6, 2 ** 10),
-            "num_layers": tune.randint(2, 4),
-            "batchnorm": tune.choice([True, False]),
-            "act_fun": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
-            "dropout": tune.uniform(0, 0.25),
+            "num_layers": tune.randint(2, 5),
+            "activation_1": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_2": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_3": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_4": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_5": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "batch_norm_1": tune.choice([True, False]),
+            "batch_norm_2": tune.choice([True, False]),
+            "batch_norm_3": tune.choice([True, False]),
+            "batch_norm_4": tune.choice([True, False]),
+            "batch_norm_5": tune.choice([True, False]),
+            "dropout_1": tune.uniform(0, 0.25),
+            "dropout_2": tune.uniform(0, 0.25),
+            "dropout_3": tune.uniform(0, 0.25),
+            "dropout_4": tune.uniform(0, 0.25),
+            "dropout_5": tune.uniform(0, 0.25),
             "lr": tune.loguniform(1e-4, 1e-3),
             "batch_size": tune.randint(32, 256)
         }
@@ -112,9 +124,21 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             "first_layer_size": 2061,
             "code_layer_size": 445,
             "num_layers": 2,
-            "batchnorm": True,
-            "act_fun": 'relu',
-            "dropout": 0.0,
+            "activation_1": 'relu',
+            "activation_2": 'relu',
+            "activation_3": 'relu',
+            "activation_4": 'relu',
+            "activation_5": 'relu',
+            "batch_norm_1": True,
+            "batch_norm_2": True,
+            "batch_norm_3": True,
+            "batch_norm_4": True,
+            "batch_norm_5": True,
+            "dropout_1": 0.0,
+            "dropout_2": 0.0,
+            "dropout_3": 0.0,
+            "dropout_4": 0.0,
+            "dropout_5": 0.0,
             "lr": 0.000121820,
             "batch_size": 256
         }]
@@ -126,11 +150,29 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             "width": tune.choice(["512", "1024", "2048", "4096"]),
             "num_branch": tune.randint(2, 7),
             "stride": tune.choice([1, 3, 5]),
-            "batchnorm": tune.choice([True, False]),
-            "act_fun": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
-            "dropout": tune.uniform(0, 0.25),
+            "activation_1": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_2": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_3": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_4": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_5": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_6": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_7": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "batch_norm_1": tune.choice([True, False]),
+            "batch_norm_2": tune.choice([True, False]),
+            "batch_norm_3": tune.choice([True, False]),
+            "batch_norm_4": tune.choice([True, False]),
+            "batch_norm_5": tune.choice([True, False]),
+            "batch_norm_6": tune.choice([True, False]),
+            "batch_norm_7": tune.choice([True, False]),
+            "dropout_1": tune.uniform(0, 0.25),
+            "dropout_2": tune.uniform(0, 0.25),
+            "dropout_3": tune.uniform(0, 0.25),
+            "dropout_4": tune.uniform(0, 0.25),
+            "dropout_5": tune.uniform(0, 0.25),
+            "dropout_6": tune.uniform(0, 0.25),
+            "dropout_7": tune.uniform(0, 0.25),
             "lr": tune.loguniform(1e-4, 1e-3),
-            # Note the smaller batch size
+            # Note the smaller batch size for CNNs compared to DNNs
             "batch_size": tune.randint(32, 256)
         }
 
@@ -234,9 +276,9 @@ if __name__ == '__main__':
     parser.add_argument('--first_layer_size', required=False)
     parser.add_argument('--code_layer_size', required=False)
     parser.add_argument('--num_layers', required=False)
-    parser.add_argument('--batchnorm', required=False)
-    parser.add_argument('--act_fun', required=False)
-    parser.add_argument('--dropout', required=False)
+    parser.add_argument('--batchnorm_list', required=False)
+    parser.add_argument('--act_fun_list', required=False)
+    parser.add_argument('--dropout_list', required=False)
     parser.add_argument('--batch_size', required=False)
     parser.add_argument('--lr', required=False)
     parser.add_argument('--name_tag', help='A string that will be added to the CSV file name generated by this program',
