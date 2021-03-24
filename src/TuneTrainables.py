@@ -10,16 +10,17 @@ from ray.tune import Trainable
 from ray.tune.utils import validate_save_restore
 from torch.utils import data
 
-from DRPPreparation import drp_create_datasets, drp_main_prep, autoencoder_create_datasets, drp_load_datatypes
+from DRPPreparation import drp_create_datasets, drp_main_prep, autoencoder_create_datasets, drp_load_datatypes, \
+    create_cv_folds
 from DataImportModules import OmicData, MorganData
 from Models import DNNAutoEncoder, MultiHeadCNNAutoEncoder, DrugResponsePredictor
 from ModuleLoader import ExtractEncoder
-from TrainFunctions import morgan_train, omic_train, drp_train, drp_cross_validate
+from TrainFunctions import morgan_train, omic_train, drp_train, cross_validate
 
 file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
                   "mut_file_name": "DepMap_20Q2_CGC_Mutations_by_Cell.hdf",
-                  "cnv_file_name": "DepMap_20Q2_CopyNumber.hdf",
-                  "exp_file_name": "DepMap_20Q2_Expression.hdf",
+                  "cnv_file_name": "TCGA_PreTraining_CopyNumber.hdf",
+                  "exp_file_name": "TCGA_PreTraining_Expression.hdf",
                   "prot_file_name": "DepMap_20Q2_No_NA_ProteinQuant.hdf",
                   "tum_file_name": "DepMap_20Q2_Line_Info.csv",
                   "gdsc1_file_name": "GDSC1_AAC_MORGAN.hdf",
@@ -192,30 +193,39 @@ class OmicTrainable(Trainable):
         self.data_dir = "/home/l/lstein/ftaj/.conda/envs/drp1/Data/DRP_Training_Data/"
         self.timestep = 0
         self.config = config
-
+        self.batch_size = config['batch_size']
         # Prepare data loaders ==========
         self.train_data = OmicData(path=self.data_dir,
                                    omic_file_name=file_name_dict[config["data_type"] + "_file_name"])
-        self.train_data, self.train_sampler, self.valid_sampler, \
-        self.train_idx, self.valid_idx = autoencoder_create_datasets(train_data=self.train_data)
+        # self.train_data, self.train_sampler, self.valid_sampler, \
+        # self.train_idx, self.valid_idx = autoencoder_create_datasets(train_data=self.train_data)
 
         print("Train data length:", len(self.train_data))
 
+        self.cv_folds = create_cv_folds(train_data=self.train_data, train_attribute_name="full_train",
+                                        sample_column_name="tcga_sample_id", n_folds=config['n_folds'], class_data_index=None,
+                                   subset_type="cell_line", class_column_name="cancer_type", seed=42,
+                                   verbose=False)
+
         # Create data_loaders
-        self.train_loader = data.DataLoader(self.train_data, batch_size=config["batch_size"],
-                                            sampler=self.train_sampler, num_workers=NUM_WORKERS, pin_memory=True,
-                                            drop_last=True)
-        self.valid_loader = data.DataLoader(self.train_data, batch_size=config["batch_size"] * 4,
-                                            sampler=self.valid_sampler, num_workers=NUM_WORKERS, pin_memory=True,
-                                            drop_last=True)
+        # self.train_loader = data.DataLoader(self.train_data, batch_size=config["batch_size"],
+        #                                     sampler=self.train_sampler, num_workers=NUM_WORKERS, pin_memory=True,
+        #                                     drop_last=True)
+        # self.valid_loader = data.DataLoader(self.train_data, batch_size=config["batch_size"] * 4,
+        #                                     sampler=self.valid_sampler, num_workers=NUM_WORKERS, pin_memory=True,
+        #                                     drop_last=True)
 
         # Prepare model =============
-        self.cur_model = DNNAutoEncoder(input_dim=self.train_data.width(),
-                                        first_layer_size=self.config["first_layer_size"],
-                                        code_layer_size=self.config["code_layer_size"],
-                                        num_layers=self.config["num_layers"],
-                                        batchnorm_list=self.config["batchnorm_list"],
-                                        act_fun_list=self.config["act_fun_list"])
+        all_act_funcs, all_batch_norm, all_dropout = get_layer_configs(self.config, model_type="dnn")
+        self.cur_model = DNNAutoEncoder(
+            input_dim=self.train_data.width(),
+            first_layer_size=self.config["first_layer_size"],
+            code_layer_size=self.config["code_layer_size"],
+            num_layers=self.config["num_layers"],
+            batchnorm_list=all_batch_norm,
+            act_fun_list=all_act_funcs,
+            dropout_list=all_dropout
+        )
 
         self.cur_model = self.cur_model.float()
         self.cur_model = self.cur_model.cuda()
@@ -224,26 +234,31 @@ class OmicTrainable(Trainable):
 
     def reset_config(self, new_config):
         try:
+            self.batch_size = new_config['batch_size']
             # Reset model with new_config ===========
-            self.cur_model = DNNAutoEncoder(input_dim=self.train_data.width(),
-                                            first_layer_size=new_config["first_layer_size"],
-                                            code_layer_size=new_config["code_layer_size"],
-                                            num_layers=new_config["num_layers"],
-                                            batchnorm_list=new_config["batchnorm_list"],
-                                            act_fun_list=new_config["act_fun_list"])
+            all_act_funcs, all_batch_norm, all_dropout = get_layer_configs(new_config, model_type="dnn")
 
+            self.cur_model = DNNAutoEncoder(
+                input_dim=self.train_data.width(),
+                first_layer_size=new_config["first_layer_size"],
+                code_layer_size=new_config["code_layer_size"],
+                num_layers=new_config["num_layers"],
+                batchnorm_list=all_batch_norm,
+                act_fun_list=all_act_funcs,
+                dropout_list=all_dropout
+            )
             self.cur_model = self.cur_model.float()
             self.cur_model = self.cur_model.cuda()
             self.criterion = nn.MSELoss().cuda()
             self.optimizer = optim.Adam(self.cur_model.parameters(), lr=new_config["lr"])
 
             # Reset data loaders ===============
-            self.train_loader = data.DataLoader(self.train_data, batch_size=new_config["batch_size"],
-                                                sampler=self.train_sampler, num_workers=NUM_WORKERS, pin_memory=True,
-                                                drop_last=True)
-            self.valid_loader = data.DataLoader(self.train_data, batch_size=new_config["batch_size"] * 4,
-                                                sampler=self.valid_sampler, num_workers=NUM_WORKERS, pin_memory=True,
-                                                drop_last=True)
+            # self.train_loader = data.DataLoader(self.train_data, batch_size=new_config["batch_size"],
+            #                                     sampler=self.train_sampler, num_workers=NUM_WORKERS, pin_memory=True,
+            #                                     drop_last=True)
+            # self.valid_loader = data.DataLoader(self.train_data, batch_size=new_config["batch_size"] * 4,
+            #                                     sampler=self.valid_sampler, num_workers=NUM_WORKERS, pin_memory=True,
+            #                                     drop_last=True)
             return True
         except:
             return False
@@ -254,18 +269,30 @@ class OmicTrainable(Trainable):
         # avg_train_losses = []
         # for epoch in range(last_epoch, num_epochs):
         start_time = time.time()
-        train_losses, valid_losses = omic_train(self.train_loader, self.cur_model, self.criterion, self.optimizer,
-                                                epoch=self.timestep, valid_loader=self.valid_loader)
+        # train_losses, valid_losses = omic_train(self.train_loader, self.cur_model, self.criterion, self.optimizer,
+        #                                         epoch=self.timestep, valid_loader=self.valid_loader)
+        self.all_sum_train_losses, \
+        self.all_sum_valid_losses, \
+        self.all_avg_valid_losses = cross_validate(train_data=self.train_data,
+                                                   train_function=omic_train,
+                                                   cv_folds=self.cv_folds,
+                                                   batch_size=self.batch_size,
+                                                   cur_model=self.cur_model,
+                                                   criterion=self.criterion,
+                                                   optimizer=self.optimizer,
+                                                   epoch=self.timestep,
+                                                   NUM_WORKERS=NUM_WORKERS)
+
 
         duration = time.time() - start_time
         # avg_train_losses.append(train_losses.avg)
-        self.sum_train_loss = train_losses.sum
-        self.sum_valid_loss = valid_losses.sum
-        self.avg_valid_loss = valid_losses.avg
+        self.sum_cv_train_loss = sum(self.all_sum_train_losses)
+        self.sum_cv_valid_loss = sum(self.all_sum_valid_losses)
+        self.avg_cv_valid_loss = sum(self.all_sum_valid_losses) / len(self.all_sum_valid_losses)
 
-        return {"sum_valid_loss": self.sum_valid_loss,
-                "avg_valid_loss": self.avg_valid_loss,
-                "sum_train_loss": self.sum_train_loss,
+        return {"sum_cv_valid_loss": self.sum_cv_valid_loss,
+                "sum_cv_train_loss": self.sum_cv_train_loss,
+                "avg_cv_valid_loss": self.avg_cv_valid_loss,
                 "time_this_iter_s": duration}
 
     def save_checkpoint(self, tmp_checkpoint_dir):
@@ -347,7 +374,6 @@ class DRPTrainable(Trainable):
 
         # Then the function will automatically make "new" indices and return them for saving in the checkpoint file
         # NOTE: The seed is the same, so the same subset is selected every time (!)
-        # TODO Cross validation
         # Load bottleneck and full data once, choose later on
         self.bottleneck_train_data, \
         self.bottleneck_cv_folds = drp_create_datasets(self.data_list,
@@ -472,16 +498,17 @@ class DRPTrainable(Trainable):
         self.timestep += 1
         start_time = time.time()
 
-        self.all_sum_train_losses,\
-        self.all_sum_valid_losses,\
-        self.all_avg_valid_losses = drp_cross_validate(train_data=self.cur_train_data,
-                                                       cv_folds=self.cur_cv_folds,
-                                                       batch_size=self.batch_size,
-                                                       cur_model=self.cur_model,
-                                                       criterion=self.criterion,
-                                                       optimizer=self.optimizer,
-                                                       epoch=self.timestep,
-                                                       NUM_WORKERS=NUM_WORKERS)
+        self.all_sum_train_losses, \
+        self.all_sum_valid_losses, \
+        self.all_avg_valid_losses = cross_validate(train_data=self.cur_train_data,
+                                                   train_function=drp_train,
+                                                   cv_folds=self.cur_cv_folds,
+                                                   batch_size=self.batch_size,
+                                                   cur_model=self.cur_model,
+                                                   criterion=self.criterion,
+                                                   optimizer=self.optimizer,
+                                                   epoch=self.timestep,
+                                                   NUM_WORKERS=NUM_WORKERS)
         # train_losses, valid_losses = drp_train(train_loader=self.train_loader, valid_loader=self.valid_loader,
         #                                        cur_model=self.cur_model,
         #                                        criterion=self.criterion, optimizer=self.optimizer, epoch=self.timestep)

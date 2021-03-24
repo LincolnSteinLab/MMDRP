@@ -2,6 +2,7 @@ import argparse
 
 import numpy as np
 from torch.utils import data
+from DataImportModules import OmicData
 
 from DRPPreparation import drp_main_prep, drp_create_datasets
 import torch
@@ -29,6 +30,17 @@ cur_modules_combos = [['drug', 'mut'],
 
 import itertools
 path = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/"
+
+tcga_exp = OmicData(path=path, omic_file_name="TCGA_PreTraining_Expression.hdf")
+temp = tcga_exp.full_train
+temp['cancer_type']
+temp.columns
+tcga_exp[0]
+temp.shape
+temp.iloc[1, :].drop(["stripped_cell_line_name", "tcga_sample_id",
+                                                          "DepMap_ID", "cancer_type"], errors='ignore').to_numpy(dtype=float)
+temp.iloc[1, :].drop(["stripped_cell_line_name", "tcga_sample_id",
+                                                          "DepMap_ID", "cancer_type"], errors='ignore').shape[1]
 cur_device = "cpu"
 cur_modules = ['drug', 'mut', 'cnv', 'exp', 'prot']
 

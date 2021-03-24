@@ -7,7 +7,7 @@ from CustomFunctions import AverageMeter
 from DataImportModules import AutoEncoderPrefetcher, DataPrefetcher
 
 
-def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loader=None, verbose: bool = False):
+def morgan_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch, verbose: bool = False):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     train_losses = AverageMeter('Training Loss', ':.4e')
@@ -42,7 +42,7 @@ def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loa
 
         running_loss += loss.item()
         if verbose:
-            if i % 1000 == 999:    # print every 1000 mini-batches
+            if i % 1000 == 999:  # print every 1000 mini-batches
                 print('[%d, %5d] train loss: %.3f' %
                       (epoch, i, running_loss / 1000))
                 running_loss = 0.0
@@ -74,7 +74,7 @@ def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loa
                 data_end_time = time.time()
                 running_loss += valid_loss.item()
                 if verbose:
-                    if i % 200 == 199:    # print every 200 mini-batches
+                    if i % 200 == 199:  # print every 200 mini-batches
                         print('[%d, %5d] valid loss: %.3f' %
                               (epoch, i, running_loss / 200))
                         running_loss = 0.0
@@ -88,7 +88,7 @@ def morgan_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loa
     return train_losses, valid_losses
 
 
-def omic_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loader=None, verbose: bool = False):
+def omic_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch, verbose: bool = False):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     train_losses = AverageMeter('Training Loss', ':.4e')
@@ -124,7 +124,7 @@ def omic_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loade
 
         running_loss += loss.item()
         if verbose:
-            if i % 1000 == 999:    # print every 1000 mini-batches
+            if i % 1000 == 999:  # print every 1000 mini-batches
                 print('[%d, %5d] train loss: %.3f' %
                       (epoch, i, running_loss / 1000))
                 running_loss = 0.0
@@ -158,7 +158,7 @@ def omic_train(train_loader, cur_model, criterion, optimizer, epoch, valid_loade
                 data_end_time = time.time()
                 cur_data = prefetcher.next()
 
-                if i % 200 == 199:    # print every 200 mini-batches
+                if i % 200 == 199:  # print every 200 mini-batches
                     print('[%d, %5d] valid loss: %.3f' %
                           (epoch, i, running_loss / 200))
                     running_loss = 0.0
@@ -219,7 +219,7 @@ def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch
         train_losses.update(loss.item(), cur_dr_target.shape[0])
         running_loss += loss.item()
         if verbose:
-            if i % 1000 == 999:    # print every 2000 mini-batches
+            if i % 1000 == 999:  # print every 2000 mini-batches
                 print('[%d, %5d] train loss: %.3f' %
                       (epoch, i, running_loss / 1000))
                 running_loss = 0.0
@@ -275,7 +275,7 @@ def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch
             _, cur_dr_data, cur_dr_target = prefetcher.next()
             running_loss += valid_loss.item()
             if verbose:
-                if i % 200 == 199:    # print every 2000 mini-batches
+                if i % 200 == 199:  # print every 2000 mini-batches
                     print('[%d, %5d] valid loss: %.3f' %
                           (epoch, i, running_loss / 200))
                     running_loss = 0.0
@@ -285,8 +285,9 @@ def drp_train(train_loader, valid_loader, cur_model, criterion, optimizer, epoch
     return train_losses, valid_losses
 
 
-def drp_cross_validate(train_data, cv_folds, batch_size: int, NUM_WORKERS: int, cur_model, criterion, optimizer,
-                       epoch: int, verbose: bool = False):
+def cross_validate(train_data, train_function, cv_folds, batch_size: int, NUM_WORKERS: int, cur_model, criterion,
+                   optimizer,
+                   epoch: int, verbose: bool = False):
     n_folds = len(cv_folds)
 
     all_sum_train_losses = []
@@ -299,17 +300,17 @@ def drp_cross_validate(train_data, cv_folds, batch_size: int, NUM_WORKERS: int, 
 
         # Create data loaders based on current fold's indices
         train_loader = data.DataLoader(train_data, batch_size=batch_size,
-                                            sampler=cur_train_sampler,
-                                            num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+                                       sampler=cur_train_sampler,
+                                       num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
         # load validation data in batches 4 times the size
         valid_loader = data.DataLoader(train_data, batch_size=batch_size * 4,
-                                            sampler=cur_valid_sampler,
-                                            num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
+                                       sampler=cur_valid_sampler,
+                                       num_workers=NUM_WORKERS, pin_memory=True, drop_last=True)
 
-        train_losses, valid_losses = drp_train(train_loader=train_loader, valid_loader=valid_loader,
-                                               cur_model=cur_model,
-                                               criterion=criterion, optimizer=optimizer, epoch=epoch,
-                                               verbose=verbose)
+        train_losses, valid_losses = train_function(train_loader=train_loader, valid_loader=valid_loader,
+                                                    cur_model=cur_model,
+                                                    criterion=criterion, optimizer=optimizer, epoch=epoch,
+                                                    verbose=verbose)
 
         all_sum_train_losses.append(train_losses.sum)
         all_sum_valid_losses.append(valid_losses.sum)

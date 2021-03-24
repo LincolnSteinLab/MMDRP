@@ -27,12 +27,12 @@ file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
                   "512_drug_embed_file_name": "optimal_autoencoders/Morgan_512_AutoEncoder_Checkpoint.pt"}
 
 
-def create_cv_folds(train_data, n_folds: int = 10, class_data_index: int = 0,
+def create_cv_folds(train_data, train_attribute_name: str, sample_column_name: str = None, n_folds: int = 10, class_data_index: int = None,
                     class_column_name: str = "primary_disease", subset_type: str = None, seed: int = 42,
                     verbose: bool = False) -> []:
     """
     This function uses sklearn to create n_folds folds of the train_data, and uses the class class_column_name
-    to ensure both splits have a roughly equal representation of the given classes.
+    to ensure both splits have a roughly equal representation of the given classes (stratification).
 
     :return: list of tuples of np.arrays in (train_indices, valid_indices) format
     """
@@ -41,7 +41,13 @@ def create_cv_folds(train_data, n_folds: int = 10, class_data_index: int = 0,
     if subset_type in ["drug", "both"]:
         exit("Drug and Both subsetting for cross validation is not yet implemented")
     np.random.seed(seed)
-    class_data = train_data.cur_pandas[class_data_index]
+
+    if class_data_index is None:
+        # Assume there's only one DataFrame
+        class_data = getattr(train_data, train_attribute_name)
+    else:
+        class_data = getattr(train_data, train_attribute_name)[class_data_index]
+    # class_data = train_data.cur_pandas[class_data_index]
 
     # Stratify folds and maintain class distribution
     skf = StratifiedKFold(n_splits=n_folds)
@@ -67,7 +73,7 @@ def create_cv_folds(train_data, n_folds: int = 10, class_data_index: int = 0,
         num_cells_per_fold = []
         for cur_class in all_classes:
             # Get current class cell lines, sample with the number of folds, and separate from train
-            cur_class_cells = list(set(list(class_data[class_data[class_column_name] == cur_class]['ccl_name'])))
+            cur_class_cells = list(set(list(class_data[class_data[class_column_name] == cur_class][sample_column_name])))
             cur_class_cells.sort(key=str.lower)
             num_cells_in_fold = int(np.ceil(len(cur_class_cells) / n_folds))
             cur_class_cells = cycle(cur_class_cells)
@@ -86,8 +92,8 @@ def create_cv_folds(train_data, n_folds: int = 10, class_data_index: int = 0,
             before_train_len = len(all_folds[i_fold][0])
             before_valid_len = len(all_folds[i_fold][1])
             # Determine indices of validation and training sets
-            all_folds[i_fold] = (class_data.index[~class_data['ccl_name'].isin(cur_validation_cells)].to_numpy(),
-                                 class_data.index[class_data['ccl_name'].isin(cur_validation_cells)].to_numpy())
+            all_folds[i_fold] = (class_data.index[~class_data[sample_column_name].isin(cur_validation_cells)].to_numpy(),
+                                 class_data.index[class_data[sample_column_name].isin(cur_validation_cells)].to_numpy())
             if verbose:
                 print("Train data length before:", before_train_len, ", after:", len(all_folds[i_fold][0]),
                       ", Validation data length before:", before_valid_len, ", after:", len(all_folds[i_fold][1]))
@@ -274,7 +280,8 @@ def drp_create_datasets(data_list, key_columns, train_idx=None, valid_idx=None, 
     #     pass
     # else:
         # Obtain training indices that will be used for validation
-    cv_folds = create_cv_folds(train_data=train_data, n_folds=n_folds, class_data_index=drug_index,
+    cv_folds = create_cv_folds(train_data=train_data, train_attribute_name="cur_pandas",
+                               sample_column_name="ccl_name", n_folds=n_folds, class_data_index=drug_index,
                                subset_type=subset_type, class_column_name=class_column_name, seed=42,
                                verbose=verbose)
     # num_train = len(train_data)

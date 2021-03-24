@@ -1,12 +1,13 @@
 import pandas as pd
 import glob
 
-PATH = "/Data/DRP_Training_Data/"
+PATH = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/"
 
-cur_filenames = glob.glob(PATH + "*AAC_MORGAN*") + glob.glob(PATH + "*No_NA_ProteinQuant.csv") +\
-                                                  glob.glob(PATH + "*Expression.csv") +\
-                                                  glob.glob(PATH + "*CopyNumber.csv") +\
-                                                  glob.glob(PATH + "*CGC_Mutations_by_Cell.csv")
+# cur_filenames = glob.glob(PATH + "*AAC_MORGAN*") + glob.glob(PATH + "*No_NA_ProteinQuant.csv") +\
+#                                                   glob.glob(PATH + "*Expression.csv") +\
+#                                                   glob.glob(PATH + "*CopyNumber.csv") +\
+#                                                   glob.glob(PATH + "*CGC_Mutations_by_Cell.csv")
+cur_filenames = [PATH+"TCGA_PreTraining_CopyNumber.csv", PATH+"TCGA_PreTraining_Expression.csv"]
 
 for file_name in cur_filenames:
     # Read as CSV

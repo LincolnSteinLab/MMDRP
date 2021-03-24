@@ -38,12 +38,14 @@ class OmicData(data.Dataset):
         return self.full_train.shape[0]
 
     def width(self):
-        # Exclude the key column
-        return self.full_train.shape[1] - 1
+        # Exclude potential key columns
+        return self.full_train.iloc[1, :].drop(["stripped_cell_line_name", "tcga_sample_id",
+                                                          "DepMap_ID", "cancer_type"], errors='ignore').shape[0]
 
     def __getitem__(self, idx):
         # Exclude the key column and return as a numpy array of type float
-        return self.full_train.iloc[idx, 1:].to_numpy(dtype=float)
+        return self.full_train.iloc[idx, :].drop(["stripped_cell_line_name", "tcga_sample_id",
+                                                          "DepMap_ID", "cancer_type"], errors='ignore').to_numpy(dtype=float)
 
 
 class MorganData(data.Dataset):

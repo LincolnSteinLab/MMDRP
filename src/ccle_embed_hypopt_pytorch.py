@@ -10,9 +10,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils import data
 
-from DRP.src.DataImportModules import OmicData
+from DataImportModules import OmicData
 from Models import DNNAutoEncoder
-from DRP.src.TrainFunctions import omic_train
+from TrainFunctions import omic_train
 from TuneTrainables import OmicTrainable
 
 import ray
@@ -32,8 +32,8 @@ cudnn.deterministic = True
 
 file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
                   "mut_file_name": "DepMap_20Q2_CGC_Mutations_by_Cell.hdf",
-                  "cnv_file_name": "DepMap_20Q2_CopyNumber.hdf",
-                  "exp_file_name": "DepMap_20Q2_Expression.hdf",
+                  "cnv_file_name": "TCGA_PreTraining_CopyNumber.hdf",
+                  "exp_file_name": "TCGA_PreTraining_Expression.hdf",
                   "prot_file_name": "DepMap_20Q2_No_NA_ProteinQuant.hdf",
                   "tum_file_name": "DepMap_20Q2_Line_Info.csv",
                   "gdsc1_file_name": "GDSC1_AAC_MORGAN.hdf",
@@ -153,8 +153,22 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             "first_layer_size": tune.randint(2 ** 9, 10005),
             "code_layer_size": tune.randint(2 ** 8, 6005),
             "num_layers": tune.randint(2, 5),
-            "batchnorm_list": tune.choice([True, False]),
-            "act_fun_list": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
+            'n_folds': 10,
+            "activation_1": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_2": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_3": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_4": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_5": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "batch_norm_1": tune.choice([True, False]),
+            "batch_norm_2": tune.choice([True, False]),
+            "batch_norm_3": tune.choice([True, False]),
+            "batch_norm_4": tune.choice([True, False]),
+            "batch_norm_5": tune.choice([True, False]),
+            "dropout_1": tune.uniform(0, 0.25),
+            "dropout_2": tune.uniform(0, 0.25),
+            "dropout_3": tune.uniform(0, 0.25),
+            "dropout_4": tune.uniform(0, 0.25),
+            "dropout_5": tune.uniform(0, 0.25),
             "lr": tune.loguniform(1e-4, 1e-3),
             "batch_size": tune.randint(4, 32)
         }
@@ -164,8 +178,22 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
                 'first_layer_size': 9479,
                 'code_layer_size': 797,
                 'num_layers': 2,
-                "batchnorm_list": False,
-                "act_fun_list": 'relu',
+                'n_folds': 10,
+                "activation_1": 'relu',
+                "activation_2": 'relu',
+                "activation_3": 'relu',
+                "activation_4": 'relu',
+                "activation_5": 'relu',
+                "batch_norm_1": False,
+                "batch_norm_2": False,
+                "batch_norm_3": False,
+                "batch_norm_4": False,
+                "batch_norm_5": False,
+                "dropout_1": 0.0,
+                "dropout_2": 0.0,
+                "dropout_3": 0.0,
+                "dropout_4": 0.0,
+                "dropout_5": 0.0,
                 "lr": 0.0001124,
                 "batch_size": 5
             }]
@@ -175,8 +203,22 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
                 'first_layer_size': 2356,
                 'code_layer_size': 532,
                 'num_layers': 2,
-                "batchnorm_list": False,
-                "act_fun_list": 'relu',
+                'n_folds': 10,
+                "activation_1": 'relu',
+                "activation_2": 'relu',
+                "activation_3": 'relu',
+                "activation_4": 'relu',
+                "activation_5": 'relu',
+                "batch_norm_1": False,
+                "batch_norm_2": False,
+                "batch_norm_3": False,
+                "batch_norm_4": False,
+                "batch_norm_5": False,
+                "dropout_1": 0.0,
+                "dropout_2": 0.0,
+                "dropout_3": 0.0,
+                "dropout_4": 0.0,
+                "dropout_5": 0.0,
                 "lr": 0.0001076,
                 "batch_size": 5
             }]
@@ -188,8 +230,21 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             "first_layer_size": tune.randint(2 ** 7, 2 ** 10),
             "code_layer_size": tune.randint(2 ** 6, 2 ** 9),
             "num_layers": tune.randint(2, 5),
-            "batchnorm_list": tune.choice([True, False]),
-            "act_fun_list": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
+            "activation_1": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_2": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_3": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_4": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_5": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "batch_norm_1": tune.choice([True, False]),
+            "batch_norm_2": tune.choice([True, False]),
+            "batch_norm_3": tune.choice([True, False]),
+            "batch_norm_4": tune.choice([True, False]),
+            "batch_norm_5": tune.choice([True, False]),
+            "dropout_1": tune.uniform(0, 0.25),
+            "dropout_2": tune.uniform(0, 0.25),
+            "dropout_3": tune.uniform(0, 0.25),
+            "dropout_4": tune.uniform(0, 0.25),
+            "dropout_5": tune.uniform(0, 0.25),
             "lr": tune.loguniform(1e-4, 1e-3),
             "batch_size": tune.randint(4, 32)
         }
@@ -198,8 +253,21 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             'first_layer_size': 763,
             'code_layer_size': 500,
             'num_layers': 2,
-            "batchnorm_list": False,
-            "act_fun_list": 'relu',
+            "activation_1": 'relu',
+            "activation_2": 'relu',
+            "activation_3": 'relu',
+            "activation_4": 'relu',
+            "activation_5": 'relu',
+            "batch_norm_1": False,
+            "batch_norm_2": False,
+            "batch_norm_3": False,
+            "batch_norm_4": False,
+            "batch_norm_5": False,
+            "dropout_1": 0.0,
+            "dropout_2": 0.0,
+            "dropout_3": 0.0,
+            "dropout_4": 0.0,
+            "dropout_5": 0.0,
             "lr": 0.0002672,
             "batch_size": 32
         }]
@@ -212,8 +280,21 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             "first_layer_size": tune.randint(2 ** 9, 6000),
             "code_layer_size": tune.randint(2 ** 8, 5000),
             "num_layers": tune.randint(2, 5),
-            "batchnorm_list": tune.choice([True, False]),
-            "act_fun_list": tune.choice(['none', 'relu', 'prelu', 'lrelu']),
+            "activation_1": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_2": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_3": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_4": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "activation_5": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+            "batch_norm_1": tune.choice([True, False]),
+            "batch_norm_2": tune.choice([True, False]),
+            "batch_norm_3": tune.choice([True, False]),
+            "batch_norm_4": tune.choice([True, False]),
+            "batch_norm_5": tune.choice([True, False]),
+            "dropout_1": tune.uniform(0, 0.25),
+            "dropout_2": tune.uniform(0, 0.25),
+            "dropout_3": tune.uniform(0, 0.25),
+            "dropout_4": tune.uniform(0, 0.25),
+            "dropout_5": tune.uniform(0, 0.25),
             "lr": tune.loguniform(1e-4, 1e-3),
             "batch_size": tune.randint(4, 32)
         }
@@ -222,8 +303,21 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
             'first_layer_size': 2530,
             'code_layer_size': 1875,
             'num_layers': 2,
-            "batchnorm_list": False,
-            "act_fun_list": 'relu',
+            "activation_1": 'relu',
+            "activation_2": 'relu',
+            "activation_3": 'relu',
+            "activation_4": 'relu',
+            "activation_5": 'relu',
+            "batch_norm_1": False,
+            "batch_norm_2": False,
+            "batch_norm_3": False,
+            "batch_norm_4": False,
+            "batch_norm_5": False,
+            "dropout_1": 0.0,
+            "dropout_2": 0.0,
+            "dropout_3": 0.0,
+            "dropout_4": 0.0,
+            "dropout_5": 0.0,
             "lr": 0.00010036,
             "batch_size": 31
         }]
@@ -258,7 +352,7 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
 
     reporter = CLIReporter(
         # parameter_columns=["l1", "l2", "lr", "batch_size"],
-        metric_columns=["sum_valid_loss", "sum_train_loss", "training_iteration", "time_this_iter_s"])
+        metric_columns=["sum_cv_valid_loss", "sum_cv_train_loss", "avg_cv_valid_loss", "training_iteration", "time_this_iter_s"])
 
     if args.resume in ['0', '1']:
         resume = bool(int(args.resume))
@@ -280,17 +374,17 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
         progress_reporter=reporter,
         stop={"training_iteration": max_num_epochs},
         # time_budget_s=int(args.max_seconds),
-        metric="sum_valid_loss",
+        metric="sum_cv_valid_loss",
         mode="min",
         keep_checkpoints_num=1,
         checkpoint_at_end=True,
         # checkpoint_score_attr="min-loss",
         reuse_actors=True, local_dir=local_dir)
 
-    best_trial = result.get_best_trial(metric="sum_valid_loss", mode="min", scope="all")
+    best_trial = result.get_best_trial(metric="sum_cv_valid_loss", mode="min", scope="all")
     print("Best trial config: {}".format(best_trial.config))
     print("Best trial final sum validation loss: {}".format(
-        best_trial.last_result["sum_valid_loss"]))
+        best_trial.last_result["sum_cv_valid_loss"]))
     print("Best trial number of epochs:", best_trial.last_result["training_iteration"])
 
     # print("Best trial final validation accuracy: {}".format(
