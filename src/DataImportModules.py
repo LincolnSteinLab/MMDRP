@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils import data
+import re
 
 file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
                   "mut_file_name": "DepMap_20Q2_CGC_Mutations_by_Cell.hdf",
@@ -124,7 +125,6 @@ class DRCurveData(data.Dataset):
         # morgan_train[0]
         print("Removed ", str(cur_len - len(self.full_train.index)), "NoneType values from data")
 
-
     def __len__(self):
         return self.full_train.shape[0]
 
@@ -168,16 +168,16 @@ class PairData(data.Dataset):
         # We will use the key_column entities that are shared among all given datasets
         # TODO having list() might result in a double list if input is a list
         if len(list(key_columns)) == 1:
-            # Convert keys (e.g. cell line names) to upper case and remove hyphens
+            # Convert keys (e.g. cell line names) to upper case, remove dashes, slashes and spaces
             for i in range(len(pandas)):
+                pandas[i][key_columns] = pandas[i][key_columns].str.replace('\W+', '')
                 pandas[i][key_columns] = pandas[i][key_columns].str.upper()
-                pandas[i][key_columns] = pandas[i][key_columns].str.replace('-', '')
             # If one column name is given, then all data sets should have this column
             key_col_list = [list(panda[key_columns]) for panda in pandas]
         else:
             for i in range(len(pandas)):
+                pandas[i][key_columns[i]] = pandas[i][key_columns[i]].str.replace('\W+', '')
                 pandas[i][key_columns[i]] = pandas[i][key_columns[i]].str.upper()
-                pandas[i][key_columns[i]] = pandas[i][key_columns[i]].str.replace('-', '')
             # If multiple column names are given, then each should match the data_module_list order
             key_col_list = [list(panda[key_columns[i]]) for panda, i in zip(pandas, range(len(key_columns)))]
 
