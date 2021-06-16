@@ -1,6 +1,52 @@
 import numpy as np
 import torch
 import time
+import torch.nn as nn
+from pandas import DataFrame
+from ray.tune.logger import UnifiedLogger
+import networkx as nx
+from scipy.sparse.csgraph import maximum_bipartite_matching
+from scipy.sparse import csr_matrix
+import pandas
+
+
+def cell_drug_match(class_data: DataFrame):
+    """
+    This function finds the maximum number of semi-exclusive pairings between cell lines and drugs, where each drugs
+    can have a maximum of n cell lines assigned to it, but each cell line is only assigned to a single drug.
+
+    :param class_data:
+    :return:
+    """
+    class_net_subset = class_data[['ccl_name', 'cpd_name']]
+
+    df = pandas.crosstab(class_net_subset.ccl_name, class_net_subset.cpd_name)
+    cur_drugs = df.columns.tolist()
+
+    # Duplicate drug columns (n times) to allow for mutliple cell-line/drug assignments
+    # TODO generalize this scheme to n duplications
+    for col_name in cur_drugs:
+        df['duplicate_'+col_name] = df[col_name]
+
+    cur_cells = df.index.tolist()
+
+    # Each cell is matched to a drug
+    csr = csr_matrix(df)
+    max_match = maximum_bipartite_matching(csr, perm_type='column')
+    max_match_list = max_match.tolist()
+
+    # Create dictionary of matches based on drugs
+    match_dict = {}
+    for i in range(len(max_match_list)):
+        # if 'duplicate' in df.columns[max_match_list[i]]:
+        #     break
+        cur_drug_name = df.columns[max_match_list[i]].replace('duplicate_', '')
+        if cur_drug_name in match_dict.keys():
+            match_dict[cur_drug_name].append(cur_cells[i])
+        else:
+            match_dict[cur_drug_name] = [cur_cells[i]]
+
+    return match_dict
 
 
 class AverageMeter(object):
@@ -46,8 +92,8 @@ class ProgressMeter(object):
 
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""
-    def __init__(self, train_idx, valid_idx, patience=3, verbose=False, delta=0, path='checkpoint.pt',
-                 trace_func=print, best_score=None):
+    def __init__(self, train_idx=None, valid_idx=None, patience=7, save=False, save_after_n_epochs=5, lower_better=True,
+                 verbose=False, delta=0.01, path='checkpoint.pt', trace_func=print, best_score=None):
         """
         Args:
             patience (int): How long to wait after last time validation loss improved.
@@ -72,26 +118,52 @@ class EarlyStopping:
         self.delta = delta
         self.path = path
         self.trace_func = trace_func
+        self.save = save
+        self.lower_better = lower_better
+        self.save_after_n_epochs = save_after_n_epochs
+        self.best_epoch = 0
 
-    def __call__(self, val_loss, model, optimizer, epoch):
-
-        score = -val_loss
+    def __call__(self, score, epoch, model=None, optimizer=None):
 
         if self.best_score is None:
             self.best_score = score
-            # Don't save in the first N epochs
-            if epoch > 6:
-                self.save_checkpoint(val_loss, model, optimizer, epoch)
-        elif score < self.best_score + self.delta:
-            self.counter += 1
-            self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
-            if self.counter >= self.patience:
-                self.early_stop = True
+            self.best_epoch = epoch
+            if self.save is True:
+                # Don't save in the first N epochs
+                if epoch > self.save_after_n_epochs:
+                    self.save_checkpoint(score, model, optimizer, epoch)
+            return
+
+        if self.lower_better is True:
+            if score > self.best_score - self.delta:
+                self.counter += 1
+                self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+                if self.counter >= self.patience:
+                    self.early_stop = True
+            else:
+                self.best_score = score
+                self.best_epoch = epoch
+                if self.save is True:
+                    # Don't save in the first N epochs
+                    if epoch > self.save_after_n_epochs:
+                        self.save_checkpoint(score, model, optimizer, epoch)
+                self.counter = 0
+
         else:
-            self.best_score = score
-            if epoch > 6:
-                self.save_checkpoint(val_loss, model, optimizer, epoch)
-            self.counter = 0
+            # Higher score is better
+            if score < self.best_score + self.delta:
+                self.counter += 1
+                self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+                if self.counter >= self.patience:
+                    self.early_stop = True
+            else:
+                self.best_score = score
+                self.best_epoch = epoch
+                if self.save is True:
+                    # Don't save in the first N epochs
+                    if epoch > self.save_after_n_epochs:
+                        self.save_checkpoint(score, model, optimizer, epoch)
+                self.counter = 0
 
     def save_checkpoint(self, val_loss, model, optimizer, epoch):
         """Saves model when validation loss decreases."""
@@ -172,3 +244,15 @@ class AutoEncoderEarlyStopping:
         }, self.path)
         print("Saving done in", time.time() - start_time, "seconds")
         self.val_loss_min = val_loss
+
+
+def weight_reset(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear) or\
+            isinstance(m, nn.Conv1d) or isinstance(m, nn.ConvTranspose1d):
+        m.reset_parameters()
+
+
+class MyLoggerCreator(UnifiedLogger):
+
+    def __init__(self, config, logdir: str = "/scratch/l/lstein/ftaj/ray_logdir"):
+        super().__init__(config, logdir)

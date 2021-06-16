@@ -28,6 +28,32 @@ from CustomPytorchLayers import CustomCoder, CustomDense, CustomCNN
 #                       out_channels_list=[1, 1, 1], batchnorm_list=[False, False, False], stride_list=[2, 2, 2],
 #                       act_fun_list=NeuralNets.ReLU(), dropout_list=[0., 0., 0.], encode=None)
 # torchsummary.summary(temp, input_size=(1, 512))
+class AE(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.encoder_hidden_layer = nn.Linear(
+            in_features=kwargs["input_shape"], out_features=128
+        )
+        self.encoder_output_layer = nn.Linear(
+            in_features=128, out_features=128
+        )
+        self.decoder_hidden_layer = nn.Linear(
+            in_features=128, out_features=128
+        )
+        self.decoder_output_layer = nn.Linear(
+            in_features=128, out_features=kwargs["input_shape"]
+        )
+
+    def forward(self, features):
+        activation = self.encoder_hidden_layer(features)
+        activation = torch.relu(activation)
+        code = self.encoder_output_layer(activation)
+        code = torch.relu(code)
+        activation = self.decoder_hidden_layer(code)
+        activation = torch.relu(activation)
+        activation = self.decoder_output_layer(activation)
+        reconstructed = torch.relu(activation)
+        return reconstructed
 
 
 class DNNAutoEncoder(nn.Module):
@@ -206,18 +232,24 @@ class DrugResponsePredictor(nn.Module):
     Optional: User can convert the encoder modules to half (FP16) precision
     """
 
-    def __init__(self, layer_sizes=None, gpu_locs=None, encoder_requires_grad=False, act_fun=None,
-                 batchnorm=None, dropout=0.0, *encoders):
+    def __init__(self, layer_sizes=None, gpu_locs=None, encoder_requires_grad=False, act_fun_list=None,
+                 batchnorm_list=None, dropout_list=0.0, *encoders):
         super(DrugResponsePredictor, self).__init__()
         if gpu_locs is not None:
             assert len(gpu_locs) == len(encoders), "gpu_locs:" + str(len(gpu_locs)) + ", encoders:" + str(len(encoders))
-        if batchnorm is None or batchnorm is False:
+        if batchnorm_list is None or batchnorm_list is False:
             batchnorm_list = [False] * len(layer_sizes)
-        elif batchnorm is True:
+        elif batchnorm_list is True:
             batchnorm_list = [True] * len(layer_sizes)
         else:
             Warning("Incorrect batchnorm_list argument, defaulting to False")
             batchnorm_list = [False] * len(layer_sizes)
+
+        if dropout_list is None or dropout_list == "none" or dropout_list == 0.0:
+            dropout_list = [0.0] * len(layer_sizes)
+
+        if act_fun_list is None:
+            act_fun_list = [None] * len(layer_sizes)
 
         self.encoders = encoders
         self.len_encoder_list = len(self.encoders)
@@ -263,9 +295,9 @@ class DrugResponsePredictor(nn.Module):
 
         drp_layers = [CustomDense(input_size=self.layer_sizes[i],
                                   hidden_size=self.layer_sizes[i + 1],
-                                  act_fun=act_fun,
+                                  act_fun=act_fun_list[i],
                                   batch_norm=batchnorm_list[i],
-                                  dropout=dropout,
+                                  dropout=dropout_list[i],
                                   name="drp_" + str(i)) for i in
                       range(len(self.layer_sizes) - 1)]
         if self.gpu_locs is not None:
@@ -281,32 +313,15 @@ class DrugResponsePredictor(nn.Module):
     def forward(self, *inputs):
         # TODO this "is.instance" might cause a slow down
         # We have an arbitrarily sized list of inputs matching the number of given encoders
-        assert len(inputs) == self.len_encoder_list, \
-            "Number of inputs should match the number of encoders and must be in the same order"
-        # if len(inputs) != self.len_encoder_list:
-        #     print("Number of inputs should match the number of encoders and must be in the same order")
-        #     print("Input Length:", len(inputs), ", expected:", self.len_encoder_list)
-        # TODO This part is for the case where different GPUs handle different inputs
-        # if self.gpu_locs is not None:
-        #     # Move inputs to the same GPU as the respective encoder (assuming same order)
-        #     # TODO: Does this back and forth transfer result in speed loss?
-        #     # Use non_blocking=True results in an asynchronous transfer, potentially faster. .forward() is async by default
-        #     encoder_outs = [
-        #         self.encoder_list[j].forward(inputs[j].to("cuda:" + str(self.gpu_locs[i]), non_blocking=True)) for i, j
-        #         in
-        #         zip(range(len(self.gpu_locs)), range(len(self.encoder_list)))]
-        #     # Then bring each result back to default GPU: 0
-        #     encoder_outs = [out.cuda(non_blocking=True) for out in encoder_outs]
-        # else:
-        #     encoder_outs = [self.encoder_list[i].forward(inputs[i].to("cpu")) for i in range(len(self.encoder_list))]
-        # TODO how to make this operation async? or is it inherently async?
+        if not len(inputs) == self.len_encoder_list:
+            print("Number of inputs should match the number of encoders and must be in the same order, got")
+            raise AssertionError("len(inputs):", len(inputs), "!=", "len_encoder_list", self.len_encoder_list)
+
         encoder_outs = [self.encoders[i](inputs[i]) for i in
                         range(len(self.encoders))]
         # Concatenate the outputs by rows
         drp_input = torch.cat(encoder_outs, 1)
-        # Pass on to DRP module, which is on default GPU: 0
-        # for i in range(len(self.drp_module)):
-        #     drp_input = self.drp_module[i](drp_input)
+
         return self.drp_module(drp_input)
 
 

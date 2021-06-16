@@ -28,6 +28,7 @@ cudnn.deterministic = True
 
 
 def train_auto_encoder(config, local_dir, data_dir):
+    # TODO Implement CNN AutoEncoder Training
     # batch_size = int(args.batch_size)
     # resume = bool(int(args.resume))
     num_epochs = int(args.num_epochs)
@@ -62,7 +63,7 @@ def train_auto_encoder(config, local_dir, data_dir):
     # to track the average training loss per epoch as the model trains
     avg_train_losses = []
     for epoch in range(last_epoch, num_epochs):
-        train_losses = morgan_train(train_loader, cur_model, criterion, optimizer, epoch=epoch)
+        train_losses = morgan_train(cur_model, criterion, optimizer, epoch=epoch, train_loader=train_loader)
 
         avg_train_losses.append(train_losses.avg)
 
@@ -87,13 +88,20 @@ def train_auto_encoder(config, local_dir, data_dir):
 def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=6.0):
     if args.machine == "cluster":
         local_dir = "/.mounts/labs/steinlab/scratch/ftaj/"
-        ray.init(_lru_evict=True, num_cpus=int(args.init_cpus), num_gpus=int(args.init_gpus),
-                 object_store_memory=1.5 * 10 ** 10)
+        # ray.init(_lru_evict=True, num_cpus=int(args.init_cpus), num_gpus=int(args.init_gpus),
+        #          object_store_memory=1.5 * 10 ** 10)
     elif args.machine == "mist":
         local_dir = "/scratch/l/lstein/ftaj/"
-        ray.init(_lru_evict=True, num_cpus=int(args.init_cpus), num_gpus=int(args.init_gpus))
+        # ray.init(_lru_evict=True, num_cpus=int(args.init_cpus), num_gpus=int(args.init_gpus))
     else:
         local_dir = "//"
+
+    # Ray address for the multi-node case
+    if args.address == "":
+        ray.init(_lru_evict=True, num_cpus=int(args.init_cpus), num_gpus=int(args.init_gpus))
+    else:
+        # When connecting to an existing cluster, _lru_evict, num_cpus and num_gpus must not be provided.
+        ray.init(address=args.address)
 
     if args.model_type == "dnn":
         config = {
@@ -255,7 +263,9 @@ if __name__ == '__main__':
         description="This programs trains/optimizes an auto-encoder module on drug (fingerprint) data")
 
     parser.add_argument('--machine', help='Whether code is run on cluster or else', default="cluster")
-    # Tune parameters
+
+    # Tune parameters ====
+    parser.add_argument("--address", help="ray head node address", default="")
     parser.add_argument('--max_num_epochs', help='Number of epochs to run', required=False)
     # parser.add_argument('--max_seconds', help='Number of seconds to run', default="3600000")
     parser.add_argument('--init_cpus', help='Number of Total CPUs to use for ray.init', required=False)
@@ -270,7 +280,7 @@ if __name__ == '__main__':
                         required=False, default="dnn")
     parser.add_argument('--gpus_per_trial', help="Can be a float between 0 and 1, or higher", default="1.0")
 
-    # Training parameters
+    # Training parameters ====
     parser.add_argument('--train', default='0')
     parser.add_argument('--num_epochs', default='100')
     parser.add_argument('--first_layer_size', required=False)

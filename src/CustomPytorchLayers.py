@@ -54,6 +54,10 @@ class CustomDense(nn.Module):
             cur_act_fun = nn.LeakyReLU()
         elif act_fun == 'prelu':
             cur_act_fun = nn.PReLU()
+        elif act_fun == 'sigmoid':
+            cur_act_fun = nn.Sigmoid()
+        elif act_fun == 'tanh':
+            cur_act_fun = nn.Tanh()
         else:
             Warning("Uknown activation function given, defaulting to ReLU")
             cur_act_fun = nn.ReLU()

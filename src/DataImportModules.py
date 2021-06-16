@@ -7,21 +7,6 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils import data
-import re
-
-file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
-                  "mut_file_name": "DepMap_20Q2_CGC_Mutations_by_Cell.hdf",
-                  "cnv_file_name": "DepMap_20Q2_CopyNumber.hdf",
-                  "exp_file_name": "DepMap_20Q2_Expression.hdf",
-                  "prot_file_name": "DepMap_20Q2_No_NA_ProteinQuant.hdf",
-                  "tum_file_name": "DepMap_20Q2_Line_Info.csv",
-                  "gdsc1_file_name": "GDSC1_AAC_MORGAN.hdf",
-                  "gdsc2_file_name": "GDSC2_AAC_MORGAN.hdf",
-                  "mut_embed_file_name": "optimal_autoencoders/MUT_Omic_AutoEncoder_Checkpoint",
-                  "cnv_embed_file_name": "optimal_autoencoders/CNV_Omic_AutoEncoder_Checkpoint",
-                  "exp_embed_file_name": "optimal_autoencoders/EXP_Omic_AutoEncoder_Checkpoint",
-                  "prot_embed_file_name": "optimal_autoencoders/PROT_Omic_AutoEncoder_Checkpoint",
-                  "drug_embed_file_name": "optimal_autoencoders/Morgan_4096_AutoEncoder_Checkpoint"}
 
 
 class OmicData(data.Dataset):
@@ -29,24 +14,35 @@ class OmicData(data.Dataset):
     General class that loads and holds omics data from one of mut, cnv, exp or prot.
     """
 
-    def __init__(self, path, omic_file_name):
+    def __init__(self, path, omic_file_name, to_gpu=False):
         self.path = path
         self.omic_file_name = omic_file_name
-        self.full_train = pd.read_hdf(path + self.omic_file_name, 'df')
+        self.all_data = pd.read_hdf(path + self.omic_file_name, 'df')
+        # Separate data info columns
+        info_columns = list(
+            {"stripped_cell_line_name", "tcga_sample_id", "DepMap_ID", "cancer_type", "primary_disease"} & set(self.all_data.columns))
+        self.data_info = self.all_data[info_columns]
+        self.full_train = self.all_data.drop(["stripped_cell_line_name", "tcga_sample_id", "primary_disease",
+                                              "DepMap_ID", "cancer_type"],
+                                             axis=1, errors='ignore')
+        self.column_names = self.full_train.columns.to_list()
+        self.full_train = self.full_train.to_numpy(dtype=float)
+        self.full_train = torch.from_numpy(self.full_train)
+        self.full_train = self.full_train.float()
+        if to_gpu is True:
+            # Moving to the GPU makes training about 10x faster on V100, as it avoids RAM to VRAM transfers
+            self.full_train = self.full_train.cuda()
 
     def __len__(self):
         # Return the number of rows in the training data
         return self.full_train.shape[0]
 
     def width(self):
-        # Exclude potential key columns
-        return self.full_train.iloc[1, :].drop(["stripped_cell_line_name", "tcga_sample_id",
-                                                          "DepMap_ID", "cancer_type"], errors='ignore').shape[0]
+        return self.full_train[0].shape[0]
 
     def __getitem__(self, idx):
         # Exclude the key column and return as a numpy array of type float
-        return self.full_train.iloc[idx, :].drop(["stripped_cell_line_name", "tcga_sample_id",
-                                                          "DepMap_ID", "cancer_type"], errors='ignore').to_numpy(dtype=float)
+        return self.full_train[idx]
 
 
 class MorganData(data.Dataset):
@@ -63,7 +59,9 @@ class MorganData(data.Dataset):
 
         # Remove NoneType values (molecules whose Morgan fingerprints weren't calculated)
         # TODO: It is difficult to convert to numpy first, but may reduce computation during training
+        # TODO: Use PairData approach
         cur_len = len(self.morgan_train)
+        # TODO SETUP to_GPU function
         self.morgan_train = list(filter(None, self.morgan_train))
         # morgan_train = list(filter(None, morgan_train))
         # morgan_train = [list(i) for i in morgan_train]
@@ -101,12 +99,13 @@ class MorganData(data.Dataset):
 
 class DRCurveData(data.Dataset):
     """
-    Reads and prepares dose-response curves summarized by AAC value. Also grabs drug information as smiles and converts
-    to a morgan fingerprint of desired size and radius using the RDKit package.
+    Reads and prepares dose-response curves summarized by AAC value and drug information as morgan fingerprint.
+    TODO Should the Morgan part of this class use the Morgan Class?
     """
 
-    def __init__(self, path: str, file_name: str, key_column: str, morgan_column: str, class_column: str, target_column: str,
-                 cpd_name_column: str = "cpd_name"):
+    def __init__(self, path: str, file_name: str, key_column: str = "ccl_name", morgan_column: str = "morgan",
+                 class_column: str = "primary_disease", target_column: str = "area_above_curve",
+                 cpd_name_column: str = "cpd_name", to_gpu: bool = False, verbose: bool = False):
         self.file_name = file_name
         self.key_column = key_column
         self.morgan_column = morgan_column
@@ -116,14 +115,47 @@ class DRCurveData(data.Dataset):
 
         # Read and subset the data
         all_data = pd.read_hdf(path + file_name, 'df')
-        self.full_train = all_data[[self.key_column, self.class_column, self.cpd_name_column, self.morgan_column, self.target_column]]
+        self.all_data = all_data[[self.key_column, self.class_column, self.cpd_name_column, self.morgan_column,
+                                  self.target_column]]
+        # key_column = "ccl_name"
+        # class_column = "primary_disease"
+        # cpd_name_column = "cpd_name"
+        # morgan_column = "morgan"
+        # target_column = "area_above_curve"
+        # all_data = all_data[[key_column, class_column, cpd_name_column, morgan_column,
+        #                             target_column]]
 
-        cur_len = len(self.full_train.index)
-        self.full_train = self.full_train[self.full_train[self.morgan_column].notnull()]
-        # morgan_train = list(filter(None, morgan_train))
-        # morgan_train = [list(i) for i in morgan_train]
-        # morgan_train[0]
+        cur_len = len(self.all_data.index)
+        self.all_data = all_data[all_data[morgan_column].notnull()]
+
+        self.full_train = self.all_data[[morgan_column, target_column]]
+        self.data_info = self.all_data[[key_column, class_column, cpd_name_column]]
+        self.drug_names = self.data_info[cpd_name_column]
+
         print("Removed ", str(cur_len - len(self.full_train.index)), "NoneType values from data")
+
+        # Get the index of the DR column for better pandas indexing later on
+        self.drug_dr_col_idx = self.full_train.columns.get_loc(target_column)
+
+        if verbose:
+            print("Converting drug data targets to float32 torch tensors")
+        self.drug_data_keys = self.data_info[key_column].to_numpy()
+        drug_data_targets = self.full_train[target_column].to_numpy()
+        drug_data_targets = np.array(drug_data_targets, dtype='float').reshape(
+            drug_data_targets.shape[0], 1)
+        self.drug_data_targets = torch.from_numpy(drug_data_targets).float()
+
+        if verbose:
+            print("Converting fingerprints from str list to float32 torch tensor")
+        # Convert fingerprints list to a numpy array prepared for training
+        drug_fps = self.full_train[morgan_column].values
+        drug_fps = [(np.fromstring(cur_drug, 'i1') - 48).astype('float') for cur_drug in drug_fps]
+        drug_fps = np.vstack(drug_fps)
+        self.drug_fps = torch.from_numpy(drug_fps).float()
+
+        if to_gpu is True:
+            self.drug_data_targets = self.drug_data_targets.cuda()
+            self.drug_fps = self.drug_fps.cuda()
 
     def __len__(self):
         return self.full_train.shape[0]
@@ -132,8 +164,8 @@ class DRCurveData(data.Dataset):
         return len(self.full_train[self.morgan_column][0])
 
     def __getitem__(self, idx):
-        fingerprint = self.full_train[self.morgan_column][idx]
-        target = self.full_train[self.target_column][idx]
+        fingerprint = self.drug_fps[idx]
+        target = self.drug_data_targets[idx]
 
         return fingerprint, target
 
@@ -151,9 +183,39 @@ class PairData(data.Dataset):
     This can be used when training is to be restricted to data that is available to all modules.
     """
 
-    def __init__(self, data_module_list, key_columns: [str], drug_index: int = 0, drug_dr_column=None,
-                 test_mode=False, verbose: bool = False, bottleneck_keys: [str] = None):
+    def __init__(self, data_module_list, key_columns: [str], key_attribute_names: [str],
+                 data_attribute_names: [str] = ["full_train"], drug_index: int = 0, drug_dr_column=None,
+                 test_mode=False, verbose: bool = False, bottleneck_keys: [str] = None, to_gpu: bool = False):
+        """
+
+        :param data_module_list:
+        :param key_columns: The name of the ID column for each data type. Can be either a list with a single element
+        if the same name is used for all data types, or should have the same length as the number of data types supplied
+        :param key_attribute_names: Name of the attr of the data object that has key/ID information.
+        :param data_attribute_names: Name of the attr of the data object that has key/ID information.
+        :param drug_index:
+        :param drug_dr_column:
+        :param test_mode: whether drug and cell line names for the current batch is also returned
+        :param verbose:
+        :param bottleneck_keys:
+        :param to_gpu:
+        """
         self.key_columns = key_columns
+        if type(data_attribute_names) != list:
+            data_attribute_names = list(data_attribute_names)
+        if len(list(data_attribute_names)) == 1:
+            data_attribute_names = data_attribute_names * len(data_module_list)
+
+        if type(key_attribute_names) != list:
+            key_attribute_names = list(key_attribute_names)
+        if len(list(key_attribute_names)) == 1:
+            key_attribute_names = key_attribute_names * len(data_module_list)
+
+        if type(key_columns) != list:
+            key_columns = list(key_columns)
+        if len(list(key_columns)) == 1:
+            key_columns = key_columns * len(data_module_list)
+
         assert drug_index == 0, "Drug data should be put first in data_module_list, and throughout training/testing"
         self.drug_index = drug_index
         self.drug_dr_column = drug_dr_column
@@ -164,26 +226,31 @@ class PairData(data.Dataset):
         self.bottleneck_keys = bottleneck_keys
         self.test_mode = test_mode
 
-        pandas = [getattr(data_module_list[i], "full_train") for i in range(len(data_module_list))]
-        # We will use the key_column entities that are shared among all given datasets
+        # Get data tensors from each data type object
+        all_data_tensors = [getattr(data_module_list[i], data_attribute_names[i]) for i in
+                             range(len(data_module_list))]
+
+        # Get data info for each object
+        self.data_infos = [getattr(data_module_list[i], key_attribute_names[i]) for i in range(len(data_module_list))]
+
+        # Duplicate for later use
+        # original_data_infos = copy.deepcopy(data_infos)
+
+        # Identify shared keys among different data types
         # TODO having list() might result in a double list if input is a list
-        if len(list(key_columns)) == 1:
-            # Convert keys (e.g. cell line names) to upper case, remove dashes, slashes and spaces
-            for i in range(len(pandas)):
-                pandas[i][key_columns] = pandas[i][key_columns].str.replace('\W+', '')
-                pandas[i][key_columns] = pandas[i][key_columns].str.upper()
-            # If one column name is given, then all data sets should have this column
-            key_col_list = [list(panda[key_columns]) for panda in pandas]
-        else:
-            for i in range(len(pandas)):
-                pandas[i][key_columns[i]] = pandas[i][key_columns[i]].str.replace('\W+', '')
-                pandas[i][key_columns[i]] = pandas[i][key_columns[i]].str.upper()
-            # If multiple column names are given, then each should match the data_module_list order
-            key_col_list = [list(panda[key_columns[i]]) for panda, i in zip(pandas, range(len(key_columns)))]
+        for i in range(len(self.data_infos)):
+            self.data_infos[i][key_columns[i]] = self.data_infos[i][key_columns[i]].str.replace('\W+', '')
+            # temp = pd.DataFrame({'A': ['a', 'b', 'c'],
+            #                      'B': ['1', '2', '3']})
+            # temp['A'] = temp['A'].str.replace('a', 'A')
+            self.data_infos[i][key_columns[i]] = self.data_infos[i][key_columns[i]].str.upper()
+        # If multiple column names are given, then each should match the data_module_list order
+        key_col_list = [list(panda[key_columns[i]]) for panda, i in zip(self.data_infos, range(len(key_columns)))]
 
         # Get the intersection of all keys
         self.key_col_sect = list(set.intersection(*map(set, key_col_list)))
 
+        # Subset cell lines with list of cell lines given to be used as data bottleneck
         if self.bottleneck:
             self.key_col_sect = list(set.intersection(set(self.key_col_sect), set(bottleneck_keys)))
             if verbose:
@@ -192,82 +259,127 @@ class PairData(data.Dataset):
         if verbose:
             print("Total overlapping keys:", str(len(self.key_col_sect)))
 
-        # Subset all data based on these overlapping keys
-        if len(list(key_columns)) == 1:
-            pandas = [panda[panda[key_columns]].isin(self.key_col_sect) for panda in pandas]
+        # Concatenate omic data info and tensors + get omic data column names (e.g. gene names)
+        if self.drug_index is not None:
+            # Ignore the drug data which is the first element
+            omic_pandas = [pd.concat([cur_data_info[key_columns[i]],
+                                       pd.DataFrame(cur_data_tensor.cpu().numpy())],
+                                      axis=1) for i, cur_data_info, cur_data_tensor in
+                            zip(range(1, len(self.data_infos)), self.data_infos[1:], all_data_tensors[1:])]
+            cur_keys = key_columns[1:]
+            self.omic_column_names = [data_module_list[i].column_names for i in range(1, len(data_module_list))]
         else:
-            pandas = [panda[panda[key_columns[i]].isin(self.key_col_sect)] for panda, i in
-                      zip(pandas, range(len(key_columns)))]
+            omic_pandas = [pd.concat([cur_data_info[key_columns[i]],
+                                       pd.DataFrame(cur_data_tensor.numpy())],
+                                      axis=1) for i, cur_data_info, cur_data_tensor in
+                            zip(range(len(self.data_infos)), self.data_infos, all_data_tensors)]
+            cur_keys = key_columns
+            self.omic_column_names = [data_module_list[i].column_names for i in range(len(data_module_list))]
 
-        self.cur_pandas = pandas
+        # TODO How to take advantage of all cell lines, even those with replicates?! Perhaps use an ID other than ccl_name that is more unique to each replicate
+        # Remove duplicated cell lines in each
+        if verbose:
+            print("Removing cell line replicate data (!), keeping first match")
+        self.omic_pandas = [panda.drop_duplicates(subset=cur_keys[i], keep="first") for panda, i in
+                            zip(omic_pandas, range(len(cur_keys)))]
+
+        if verbose:
+            print("Converting pandas dataframes to dictionaries, where key is the cell line name")
+        # Convert each df to a dictionary based on the key_column, making queries much faster
+        dicts = [panda.set_index(cur_keys[i]).T.to_dict('list') for panda, i in
+                 zip(self.omic_pandas, range(len(cur_keys)))]
+
+        if verbose:
+            print("Converting lists in the dictionary to float32 torch tensors")
+        # Subset dict by overlapping keys
+        # for cur_dict in dicts:
+        #     cur_dict = {k: cur_dict[k] for k in self.key_col_sect}
+        dicts = [{k: cur_dict[k] for k in self.key_col_sect} for cur_dict in dicts]
+
+        # Convert all list values to flattened numpy arrays, then to torch tensors
+        if to_gpu is True:
+            for cur_dict in dicts:
+                for key, value in cur_dict.items():
+                    # cur_dict[key] = torch.from_numpy(np.array(cur_dict[key], dtype='float').flatten()).float().cuda()
+                    cur_dict[key] = torch.tensor(cur_dict[key]).cuda()
+        else:
+            for cur_dict in dicts:
+                for key, value in cur_dict.items():
+                    # cur_dict[key] = torch.from_numpy(np.array(cur_dict[key], dtype='float').flatten()).float()
+                    cur_dict[key] = torch.tensor(cur_dict[key])
+
+        self.dicts = dicts
+        # for cur_dict in dicts:
+        #     for key, value in cur_dict.items():
+        #         assert isinstance(cur_dict[key], torch.Tensor)
+        # torch.from_numpy(np.array(input[2], dtype='float').flatten())
+        # isinstance(torch.from_numpy(np.array(input[2], dtype='float').flatten()), torch.Tensor)
+        # torch.tensor(input[2])
+        # type(torch.tensor(input[2]))
+        # Subset data infos to keys that overlap (this will be used in CV fold creation)
+        self.data_infos = [panda[panda[key_columns[i]].isin(self.key_col_sect)] for panda, i in
+                           zip(self.data_infos, range(len(key_columns)))]
+        # TODO
+        # Except for drug data, combine other omic data types into a single np.array
+        # Subset all data based on these overlapping keys
+        # Use the original indices of overlapping keys to subset data
+        # if len(list(key_columns)) == 1:
+        #     # TODO Ensure .isin is giving the correct subset!!!
+        #     data_infos = [panda[panda[key_columns]].isin(self.key_col_sect) for panda in original_data_infos]
+        #     data_infos = [np.where(panda[panda[key_columns]].isin(self.key_col_sect)) for panda in original_data_infos]
+        #     # np.where(data_infos)
+        # else:
+        #     overlap_indices = [np.where(panda[key_columns[i]].isin(key_col_sect)) for panda, i in
+        #               zip(original_data_infos, range(len(key_columns)))]
+
+        # if len(list(key_columns)) == 1:
+        #     data_infos = [panda[panda[key_columns]].isin(self.key_col_sect) for panda in original_data_infos]
+        # else:
+        #     data_infos = [panda[panda[key_columns[i]].isin(self.key_col_sect)] for panda, i in
+        #               zip(original_data_infos, range(len(key_columns)))]
+
+        # self.cur_pandas = pandas
+        # omic_pandas = pandas
 
         if self.drug_index is not None:
-            drug_data = pandas[drug_index]
-            self.len_drug_data = drug_data.shape[0]
-            self.morgan_col = data_module_list[drug_index].morgan_column
-            self.cpd_name_column = data_module_list[drug_index].cpd_name_column
-            self.drug_names = drug_data[self.cpd_name_column]
+            drug_data = data_module_list[drug_index]
+            drug_fps = drug_data.drug_fps
+            drug_data_targets = drug_data.drug_data_targets
+            # Subset drug info by
+            # self.drug_info = self.data_infos[drug_index]
+
+            # Subset drug data based on overlapping keys
+            overlap_idx = np.where(drug_data.data_info[key_columns[drug_index]].isin(self.key_col_sect))[0]
+            self.drug_fps = drug_fps[overlap_idx]
+            self.drug_data_targets = drug_data_targets[overlap_idx]
+            self.drug_data_keys = drug_data.data_info[key_columns[drug_index]][
+                drug_data.data_info[key_columns[drug_index]].isin(self.key_col_sect)].to_list()
+
+            if to_gpu is True:
+                self.drug_fps = self.drug_fps.cuda()
+                self.drug_data_targets = self.drug_data_targets.cuda()
+
+            # self.morgan_col = data_module_list[drug_index].morgan_column
+            self.cpd_name_column = drug_data.cpd_name_column
+            self.drug_names = drug_data.data_info[self.cpd_name_column].to_list()
 
             # Get the index of the DR column for better pandas indexing later on
-            if self.drug_dr_column is not None:
-                self.drug_dr_col_idx = drug_data.columns.get_loc(self.drug_dr_column)
-            else:
-                # Assume it's in the 3rd position
-                self.drug_dr_col_idx = 2
-
-            if verbose:
-                print("Converting drug data keys and targets to numpy arrays")
-            self.drug_data_keys = drug_data[self.key_columns[self.drug_index]].to_numpy()
-            self.drug_data_targets = drug_data.iloc[:, self.drug_dr_col_idx].to_numpy()
-            self.drug_data_targets = np.array(self.drug_data_targets, dtype='float').reshape(
-                self.drug_data_targets.shape[0], 1)
-
-            self.drug_fps = drug_data[self.morgan_col].values
-            self.morgan_width = len(self.drug_fps[0])
-
-            if verbose:
-                print("Converting fingerprints from str list to float numpy array")
-            # Convert fingerprints list to a numpy array prepared for training
-            self.drug_fps = [(np.fromstring(cur_drug, 'i1') - 48).astype('float') for cur_drug in self.drug_fps]
-            self.drug_fps = np.vstack(self.drug_fps)
+            self.drug_dr_col_idx = drug_data.drug_dr_col_idx
 
             # TODO: Understand why I moved cur_keys and cur_pandas outside and explain here
             # Must remove (using .drop) the drug key column (ccl_name) and the drug data from pandas using slicing
             # Note that if we use 'del', it will mutate the original list as well!
-            if verbose:
-                print("Separating drug data from omics data")
-            self.cur_keys = self.key_columns[:self.drug_index] + self.key_columns[self.drug_index + 1:]
-            final_pandas = pandas[:self.drug_index] + pandas[self.drug_index + 1:]
-
-            # TODO How to take advantage of all cell lines, even those with replicates?! Perhaps use an ID other than ccl_name that is more unique to each replicate
-            # Remove duplicated cell lines in each
-            if verbose:
-                print("Removing cell line replicate data (!), keeping first match")
-            final_pandas = [panda.drop_duplicates(subset=self.cur_keys[i], keep="first") for panda, i in
-                            zip(final_pandas, range(len(self.cur_keys)))]
-
-            if verbose:
-                print("Converting pandas dataframes to dictionaries, where key is the cell line name")
-            # Convert each df to a dictionary based on the key_column, making queries much faster
-            self.dicts = [panda.set_index(self.cur_keys[i]).T.to_dict('list') for panda, i in
-                          zip(final_pandas, range(len(self.cur_keys)))]
-
-            if verbose:
-                print("Converting lists in the dictionary to numpy arrays")
-            # Convert all list values to flattened numpy arrays
-            for cur_dict in self.dicts:
-                for key, value in cur_dict.items():
-                    cur_dict[key] = np.array(cur_dict[key], dtype='float').flatten()
-
-            # TODO
-            # Except for drug data, combine other omic data types into a single np.array
+            # if verbose:
+            #     print("Separating drug data from omics data")
+            # self.cur_keys = self.key_columns[:self.drug_index] + self.key_columns[self.drug_index + 1:]
+            # omic_pandas = pandas[:self.drug_index] + pandas[self.drug_index + 1:]
 
     def __len__(self):
         # NOTE: It is crucial that this truly reflects the number of samples in the current dataset
         # Pytorch's data.DataLoader determines the number of batches based on this length. So having a smaller length
         # results in some data to never be shown to the model!
         if self.drug_index is not None:
-            return self.len_drug_data
+            return len(self.drug_data_keys)
         else:
             # Number of overlapping cell lines among selected data types
             return len(self.key_col_sect)
@@ -275,18 +387,18 @@ class PairData(data.Dataset):
     def __getitem__(self, idx: int):
         # Get the cell line name for the given index
         cur_cell = self.drug_data_keys[idx]
-        # Get the cell line omics data from non-drug pandas, and remove the key/cell line column for training
+        # Get the cell line omics data from omic dicts
         cur_data = [cur_dict[cur_cell] for cur_dict in self.dicts]
         # Add fingerprint data to omics data
-        cur_data = [self.drug_fps[idx, :]] + cur_data
+        cur_data = [self.drug_fps[idx]] + cur_data
 
         # Must return a dose-response summary if once is requested. It should be in the drug data
         # RETURNS: {cell_line_name, drug name}, (encoder data), dose-response target (AAC)
         if self.test_mode is False:
-            return np.array([0]), tuple(cur_data), np.array(self.drug_data_targets[idx])
+            return torch.Tensor([0]), tuple(cur_data), self.drug_data_targets[idx]
         else:
             return ({"cell_line_name": cur_cell,
-                     "drug_name": self.drug_names.iloc[idx]},
+                     "drug_name": self.drug_names[idx]},
                     tuple(encoder_data for encoder_data in cur_data),
                     self.drug_data_targets[idx])
 
@@ -298,7 +410,7 @@ class PairData(data.Dataset):
         :make_main: Change the default data to the subset held by this class.
         :return: A list of pandas that is subsetted by the given arguments.
         """
-        pandas = copy.deepcopy(self.cur_pandas)
+        pandas = copy.deepcopy(self.omic_pandas)
         if cell_lines is not None:
             # Subset by more cell lines, similar to the bottleneck condition
             if len(list(self.key_columns)) == 1:
@@ -380,6 +492,11 @@ class PairData(data.Dataset):
 
 
 class AutoEncoderPrefetcher():
+    """
+    This class creates a stream from a data.DataSet object and loads the next iteration
+    on the cuda stream on the GPU. Basically, preloading data on the GPU.
+    """
+
     def __init__(self, loader):
         self.loader = iter(loader)
         self.stream = torch.cuda.Stream()

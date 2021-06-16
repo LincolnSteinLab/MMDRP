@@ -3,9 +3,16 @@ from ray.tune import Analysis, ExperimentAnalysis
 # PATH = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/sync_to_mac/"
 PATH = "/scratch/l/lstein/ftaj/"
 
-drug_analysis = Analysis(experiment_dir=PATH + "HyperOpt_Test_Morgan",
-                        default_metric="sum_valid_loss", default_mode="min")
+# drug_analysis = Analysis(experiment_dir=PATH + "HyperOpt_DRP_FullModel_drug_prot_CTRP_Full/",
+#                             default_metric="avg_cv_valid_loss", default_mode="min")
+drug_analysis = Analysis(experiment_dir=PATH + "HyperOpt_DRP_ResponseOnly_drug_prot_CTRP_EncoderTrain/",
+                            default_metric="avg_cv_valid_loss", default_mode="min")
 drug_analysis.get_best_config()
+drug_analysis.get_best_checkpoint()
+analysis = Analysis(experiment_dir=PATH + "HyperOpt_CV_pretrain_cnv/", default_metric="avg_cv_valid_loss", default_mode="min")
+analysis = Analysis(experiment_dir=PATH + "HyperOpt_CV_exp/")
+best_checkpoint = analysis.get_best_checkpoint(analysis.get_best_logdir(),)
+
 # drug_analysis = Analysis(experiment_dir=PATH + "Test_Morgan",
 #                         default_metric="sum_valid_loss", default_mode="min")
 # drug_analysis.get_best_config()
