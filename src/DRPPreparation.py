@@ -7,32 +7,17 @@ from itertools import cycle, islice
 import numpy as np
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
-from typing import Tuple
-import networkx as nx
-from scipy.sparse.csgraph import maximum_bipartite_matching
-from scipy.sparse import csr_matrix
-from matplotlib.pyplot import figure
+from typing import Tuple, Dict, List, Union
+# import networkx as nx
+# from scipy.sparse.csgraph import maximum_bipartite_matching
+# from scipy.sparse import csr_matrix
+# from matplotlib.pyplot import figure
 
 from CustomFunctions import cell_drug_match
-from DataImportModules import OmicData, DRCurveData, PairData
+from DataImportModules import OmicData, DRCurveData, PairData, GnnDRCurveData, GenFeatures
+from Models import DNNAutoEncoder
 from ModuleLoader import ExtractEncoder
-
-file_name_dict = {"drug_file_name": "CTRP_AAC_MORGAN.hdf",
-                  "mut_file_name": "DepMap_20Q2_CGC_Mutations_by_Cell.hdf",
-                  "cnv_file_name": "DepMap_20Q2_CopyNumber.hdf",
-                  "exp_file_name": "DepMap_20Q2_Expression.hdf",
-                  "prot_file_name": "DepMap_20Q2_No_NA_ProteinQuant.hdf",
-                  "tum_file_name": "DepMap_20Q2_Line_Info.csv",
-                  "gdsc1_file_name": "GDSC1_AAC_MORGAN.hdf",
-                  "gdsc2_file_name": "GDSC2_AAC_MORGAN.hdf",
-                  "mut_embed_file_name": "optimal_autoencoders/MUT_Omic_AutoEncoder_Checkpoint.pt",
-                  "cnv_embed_file_name": "optimal_autoencoders/CNV_Omic_AutoEncoder_Checkpoint.pt",
-                  "exp_embed_file_name": "optimal_autoencoders/EXP_Omic_AutoEncoder_Checkpoint.pt",
-                  "prot_embed_file_name": "optimal_autoencoders/PROT_Omic_AutoEncoder_Checkpoint.pt",
-                  "4096_drug_embed_file_name": "optimal_autoencoders/Morgan_4096_AutoEncoder_Checkpoint.pt",
-                  "2048_drug_embed_file_name": "optimal_autoencoders/Morgan_2048_AutoEncoder_Checkpoint.pt",
-                  "1024_drug_embed_file_name": "optimal_autoencoders/Morgan_1024_AutoEncoder_Checkpoint.pt",
-                  "512_drug_embed_file_name": "optimal_autoencoders/Morgan_512_AutoEncoder_Checkpoint.pt"}
+from file_names import file_name_dict
 
 
 def create_cv_folds(train_data, train_attribute_name: str, sample_column_name: str = None, n_folds: int = 10,
@@ -90,8 +75,8 @@ def create_cv_folds(train_data, train_attribute_name: str, sample_column_name: s
             # Get indices of_group lines in each fold
             all_folds = []
             for i_fold in range(len(all_folds_group_idx)):
-                cur_train_groups = [all_groups[i] for i in all_folds_group_idx[i][0]]
-                cur_valid_groups = [all_groups[i] for i in all_folds_group_idx[i][1]]
+                cur_train_groups = [all_groups[i] for i in all_folds_group_idx[i_fold][0]]
+                cur_valid_groups = [all_groups[i] for i in all_folds_group_idx[i_fold][1]]
                 all_folds.append((class_data.index[class_data[sample_column_name].isin(cur_train_groups)].to_numpy(),
                                   class_data.index[class_data[sample_column_name].isin(cur_valid_groups)].to_numpy()))
         else:
@@ -472,8 +457,34 @@ def autoencoder_create_datasets(train_data, train_idx=None, valid_idx=None, vali
     return train_data, train_sampler, valid_sampler, train_idx, valid_idx
 
 
+def change_ae_input_size(ae, input_size, name):
+    cur_first_layer_size = ae.encoder.first_layer_size
+    cur_code_layer_size = ae.encoder.code_layer_size
+    cur_num_layers = ae.encoder.num_layers
+    cur_batchnorm_list = ae.encoder.batchnorm_list
+    cur_dropout_list = ae.encoder.dropout_list
+
+    try:
+        cur_act_fun_list = ae.encoder.act_fun_list
+    except:
+        cur_act_fun_list = ae.encoder.act_fun
+
+    cur_ae = DNNAutoEncoder(input_dim=input_size,
+            first_layer_size=cur_first_layer_size,
+            code_layer_size=cur_code_layer_size,
+            num_layers=cur_num_layers,
+            act_fun_list=cur_act_fun_list,
+            batchnorm_list=cur_batchnorm_list,
+            dropout_list=cur_dropout_list,
+            name=name)
+
+    return cur_ae
+
+
 def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name_dict: {}, device: str = 'gpu',
-                       _pretrain: bool = False, load_autoencoders: bool = False, verbose: bool = False):
+                       _pretrain: bool = False, load_autoencoders: bool = False, global_code_size: int = None,
+                       random_morgan: bool = False, transform: str = None,
+                       verbose: bool = False) -> (Dict[str, Union[DRCurveData, OmicData]], List, List[str], List[int]):
     """
     This function loads encoder's data and torch models indicated in the module_list argument. It loads
     drug response data from the train_file at the PATH directory.
@@ -485,10 +496,11 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
     :param device: either cpu or gpu, for loading the data
     :return: list of input data, list of auto-encoders, list of key column name for each data type
     """
-    data_list = []
+    data_dict = {}
     autoencoder_list = []
     key_columns = []
     gpu_locs = []
+    train_dataset = ""
 
     if device == "gpu":
         to_gpu = True
@@ -501,22 +513,39 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
     else:
         pretrain = ""
 
+    if global_code_size is not None:
+        global_code_tag = "GlobalCodeSize_" + str(global_code_size) + "_"
+    else:
+        global_code_tag = ""
+
+    if "CTRP" in train_file:
+        train_dataset = "depmap"
+    elif "GDSC" in train_file:
+        train_dataset = "gdsc"
+    else:
+        raise NotImplementedError
+    print("Will use", train_dataset, "omic data!")
+
     # TODO Make the following shorter (for loop perhaps?)
     # The following if/else statements ensure that the data has a specific order
     if "drug" in module_list:
+        # TODO change the name from drug to morgan or fingerprint... maybe other drug data will be added in the future
         # TODO: Implement a way to distinguish training dataset, e.g. CTRP vs GDSC
         # Putting drug first ensures that the drug data and module is in a fixed index, i.e. 0
+
         if verbose:
-            print("Loading drug data...")
+            print("Loading dose-response data...")
+
         cur_data = DRCurveData(path=PATH, file_name=train_file, key_column="ccl_name", class_column="primary_disease",
                                morgan_column="morgan",
-                               target_column="area_above_curve", to_gpu=to_gpu)
-        data_list.append(cur_data)
+                               target_column="area_above_curve", to_gpu=to_gpu, random_morgan=random_morgan,
+                               transform=transform)
+        data_dict['morgan'] = cur_data
         if verbose:
             print("Drug data width:", cur_data.width())
         if load_autoencoders:
-            autoencoder_list.append(torch.load(PATH + file_name_dict[str(cur_data.width()) + "_drug_embed_file_name"],
-                                               map_location=torch.device('cpu')))
+                autoencoder_list.append(torch.load(PATH + file_name_dict[str(cur_data.width()) + "_drug_embed_file_name"],
+                                                   map_location=torch.device('cpu')))
         key_columns.append("ccl_name")
         if device == "multi_gpu":
             gpu_locs.append(0)
@@ -524,19 +553,41 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
             gpu_locs.append(None)
         else:
             gpu_locs.append(0)
-    else:
-        sys.exit("Drug data must be provided for drug-response prediction")
+    # else:
+    #     sys.exit("Drug data must be provided for drug-response prediction")
+
+    if "gnndrug" in module_list:
+        if verbose:
+            print("Loading dose-response data...")
+        cur_data = GnnDRCurveData(path=PATH, file_name=train_file, key_column="ccl_name", class_column="primary_disease",
+                               target_column="area_above_curve", to_gpu=to_gpu, random_morgan=random_morgan,
+                               transform=transform, gnn_pre_transform=GenFeatures())
+
+        data_dict['gnndrug'] = cur_data
+        if load_autoencoders:
+                autoencoder_list.append(None)
+
+        key_columns.append("ccl_name")
+        if device == "multi_gpu":
+            gpu_locs.append(0)
+        elif device == "cpu":
+            gpu_locs.append(None)
+        else:
+            gpu_locs.append(0)
 
     if "mut" in module_list:
         if verbose:
-            print("Loading mutational data from", file_name_dict["mut_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict["mut_file_name"], to_gpu=to_gpu)
-        data_list.append(cur_data)
+            print("Loading mutational data from", file_name_dict[train_dataset+"_mut_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_mut_file_name"], to_gpu=to_gpu)
+        data_dict['mut'] = cur_data
         if verbose:
             print("Mut data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict["mut_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[global_code_tag + "mut_embed_file_name"], map_location=torch.device('cpu')))
+            if verbose:
+                print("Loaded auto-encoder from:", PATH + file_name_dict[global_code_tag + "mut_embed_file_name"])
+
         key_columns.append("stripped_cell_line_name")
         if device == "multi_gpu":
             gpu_locs.append(0)
@@ -547,14 +598,16 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "cnv" in module_list:
         if verbose:
-            print("Loading copy number variation data from", file_name_dict["cnv_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict["cnv_file_name"], to_gpu=to_gpu)
-        data_list.append(cur_data)
+            print("Loading copy number variation data from", file_name_dict[train_dataset+"_cnv_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_cnv_file_name"], to_gpu=to_gpu)
+        data_dict['cnv'] = cur_data
         if verbose:
             print("CNV data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict[pretrain + "cnv_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[pretrain + global_code_tag + "cnv_embed_file_name"], map_location=torch.device('cpu')))
+            if verbose:
+                print("Loaded auto-encoder from:", PATH + file_name_dict[pretrain + global_code_tag + "cnv_embed_file_name"])
         key_columns.append("stripped_cell_line_name")
         if device == "multi_gpu":
             gpu_locs.append(0)
@@ -565,14 +618,17 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "exp" in module_list:
         if verbose:
-            print("Loading gene expression data from", file_name_dict["exp_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict["exp_file_name"], to_gpu=to_gpu)
-        data_list.append(cur_data)
+            print("Loading gene expression data from", file_name_dict[train_dataset+"_exp_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_exp_file_name"], to_gpu=to_gpu)
+        data_dict['exp'] = cur_data
         if verbose:
             print("Exp data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict[pretrain + "exp_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[pretrain + global_code_tag + "exp_embed_file_name"], map_location=torch.device('cpu')))
+            if verbose:
+                print("Loaded auto-encoder from:", PATH + file_name_dict[pretrain + global_code_tag + "exp_embed_file_name"])
+
         key_columns.append("stripped_cell_line_name")
         if device == "multi_gpu":
             gpu_locs.append(0)
@@ -583,14 +639,15 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "prot" in module_list:
         if verbose:
-            print("Loading protein quantity data from", file_name_dict["prot_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict["prot_file_name"], to_gpu=to_gpu)
-        data_list.append(cur_data)
+            print("Loading protein quantity data from", file_name_dict[train_dataset+"_prot_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_prot_file_name"], to_gpu=to_gpu)
+        data_dict['prot'] = cur_data
         if verbose:
             print("Prot data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict["prot_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[global_code_tag + "prot_embed_file_name"],
+                           map_location=torch.device('cpu')))
 
         key_columns.append("stripped_cell_line_name")
         if device == "multi_gpu":
@@ -600,14 +657,88 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
         else:
             gpu_locs.append(0)
 
-    return data_list, autoencoder_list, key_columns, gpu_locs
+    if "mirna" in module_list:
+        if verbose:
+            print("Loading miRNA data from", file_name_dict[train_dataset+"_mirna_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_mirna_file_name"], to_gpu=to_gpu)
+        data_dict['mirna'] = cur_data
+        if verbose:
+            print("miRNA data width:", cur_data.width())
+        if load_autoencoders:
+            autoencoder_list.append(
+                torch.load(PATH + file_name_dict[global_code_tag + "mirna_embed_file_name"], map_location=torch.device('cpu')))
+        key_columns.append("stripped_cell_line_name")
+        if device == "multi_gpu":
+            gpu_locs.append(0)
+        elif device == "cpu":
+            gpu_locs.append(None)
+        else:
+            gpu_locs.append(0)
+
+    if "hist" in module_list:
+        if verbose:
+            print("Loading Histone Profiling data from", file_name_dict[train_dataset+"_hist_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_hist_file_name"], to_gpu=to_gpu)
+        data_dict['hist'] = cur_data
+        if verbose:
+            print("miRNA data width:", cur_data.width())
+        if load_autoencoders:
+            autoencoder_list.append(
+                torch.load(PATH + file_name_dict[global_code_tag + "hist_embed_file_name"], map_location=torch.device('cpu')))
+        key_columns.append("stripped_cell_line_name")
+        if device == "multi_gpu":
+            gpu_locs.append(0)
+        elif device == "cpu":
+            gpu_locs.append(None)
+        else:
+            gpu_locs.append(0)
+
+    if "rppa" in module_list:
+        if verbose:
+            print("Loading RPPA data from", file_name_dict[train_dataset+"_rppa_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_rppa_file_name"], to_gpu=to_gpu)
+        data_dict['rppa'] = cur_data
+        if verbose:
+            print("RPPA data width:", cur_data.width())
+        if load_autoencoders:
+            autoencoder_list.append(
+                torch.load(PATH + file_name_dict[global_code_tag + "rppa_embed_file_name"], map_location=torch.device('cpu')))
+        key_columns.append("stripped_cell_line_name")
+        if device == "multi_gpu":
+            gpu_locs.append(0)
+        elif device == "cpu":
+            gpu_locs.append(None)
+        else:
+            gpu_locs.append(0)
+
+    if "metab" in module_list:
+        if verbose:
+            print("Loading Metabolomics Profiling data from", file_name_dict[train_dataset+"_metab_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_metab_file_name"], to_gpu=to_gpu)
+        data_dict['metab'] = cur_data
+        if verbose:
+            print("Metabolomics data width:", cur_data.width())
+        if load_autoencoders:
+            autoencoder_list.append(
+                torch.load(PATH + file_name_dict[global_code_tag + "metab_embed_file_name"], map_location=torch.device('cpu')))
+        key_columns.append("stripped_cell_line_name")
+        if device == "multi_gpu":
+            gpu_locs.append(0)
+        elif device == "cpu":
+            gpu_locs.append(None)
+        else:
+            gpu_locs.append(0)
+
+    return data_dict, autoencoder_list, key_columns, gpu_locs
 
 
-def drp_create_datasets(data_list, key_columns, n_folds: int = 10,
+def drp_create_datasets(data_list: List, key_columns, n_folds: int = 10,
                         drug_index: int = 0, drug_dr_column: str = "area_above_curve",
                         class_column_name: str = "primary_disease", subset_type: str = None, stratify: bool = True,
-                        test_drug_data=None,
-                        bottleneck_keys: [str] = None, test_mode: bool = False, to_gpu: bool = False,
+                        test_drug_data=None, one_hot_drugs: bool = False,
+                        dr_sub_max_target: float = None, dr_sub_min_target: float = None, lds: bool = False,
+                        bottleneck_keys: [str] = None, mode: str = 'train', to_gpu: bool = False,
+                        gnn_mode: bool = False,
                         verbose: bool = False) -> Tuple[PairData, list]:
     """
     This function takes a list of data for each auto-encoder and passes it to the PairData function. It creates
@@ -615,16 +746,17 @@ def drp_create_datasets(data_list, key_columns, n_folds: int = 10,
     """
     if bottleneck_keys is not None:
         assert len(bottleneck_keys) > 0, "Must have at least one key in the bottleneck keys argument"
+
     if test_drug_data is not None:
-        # Only the drug data is different
+        # Must create testing data, where drug and cell line names are also returned. Only the drug data is different
         data_list[0] = test_drug_data
         if bottleneck_keys is not None:
-            test_data = PairData(data_module_list=data_list, key_columns=key_columns, drug_index=drug_index,
-                                 drug_dr_column=drug_dr_column, bottleneck_keys=bottleneck_keys,
+            test_data = PairData(data_list=data_list, key_columns=key_columns, key_attribute_names=["data_info"],
+                                 drug_index=drug_index, drug_dr_column=drug_dr_column, bottleneck_keys=bottleneck_keys,
                                  test_mode=True)
         else:
-            test_data = PairData(data_module_list=data_list, key_columns=key_columns, drug_index=drug_index,
-                                 drug_dr_column=drug_dr_column, test_mode=True)
+            test_data = PairData(data_list=data_list, key_columns=key_columns, key_attribute_names=["data_info"],
+                                 drug_index=drug_index, drug_dr_column=drug_dr_column, test_mode=True)
 
         # load test data in batches
         return test_data
@@ -635,14 +767,25 @@ def drp_create_datasets(data_list, key_columns, n_folds: int = 10,
 
     # Pair given data types based on fixed/assumed key column names
     if bottleneck_keys is not None:
-        train_data = PairData(data_module_list=data_list, key_columns=key_columns, key_attribute_names=["data_info"],
+        train_data = PairData(data_list=data_list, key_columns=key_columns, key_attribute_names=["data_info"],
                               drug_index=drug_index, drug_dr_column=drug_dr_column, bottleneck_keys=bottleneck_keys,
-                              test_mode=test_mode, to_gpu=to_gpu)
+                              one_hot_drugs=one_hot_drugs, gnn_mode=gnn_mode,
+                              mode=mode, to_gpu=to_gpu, verbose=verbose)
 
     else:
-        train_data = PairData(data_module_list=data_list, key_columns=key_columns, key_attribute_names=["data_info"],
-                              drug_index=drug_index, drug_dr_column=drug_dr_column, test_mode=test_mode, to_gpu=to_gpu)
+        train_data = PairData(data_list=data_list, key_columns=key_columns, key_attribute_names=["data_info"],
+                              drug_index=drug_index, drug_dr_column=drug_dr_column,
+                              one_hot_drugs=one_hot_drugs, gnn_mode=gnn_mode,
+                              mode=mode, to_gpu=to_gpu, verbose=verbose)
 
+    # Subset training data based on DR target values
+    if dr_sub_max_target is not None or dr_sub_min_target is not None:
+        train_data.subset(min_target=dr_sub_min_target, max_target=dr_sub_max_target)
+
+    if lds is True:
+        # Measure loss weights
+        # TODO doing LDS here re-runs pair_data() for a second time, which is inefficient
+        train_data.label_dist_smoothing()
     # print("Length of selected data set is:", len(train_data))
 
     # if (train_idx is not None) and (valid_idx is not None):
@@ -654,19 +797,19 @@ def drp_create_datasets(data_list, key_columns, n_folds: int = 10,
                                    sample_column_name="ccl_name", n_folds=n_folds, class_data_index=drug_index,
                                    subset_type="cell_line", stratify=stratify, class_column_name=class_column_name,
                                    seed=42,
-                                   verbose=verbose)
+                                   verbose=False)
     elif subset_type == "drug":
         cv_folds = create_cv_folds(train_data=train_data, train_attribute_name="data_infos",
                                    sample_column_name="cpd_name", n_folds=n_folds, class_data_index=drug_index,
                                    subset_type="drug", stratify=stratify, class_column_name=class_column_name, seed=42,
-                                   verbose=verbose)
+                                   verbose=False)
     else:
         # Sample column name is ignored
         cv_folds = create_cv_folds(train_data=train_data, train_attribute_name="data_infos",
                                    n_folds=n_folds, class_data_index=drug_index,
                                    subset_type="both", stratify=stratify, class_column_name=class_column_name,
                                    seed=42,
-                                   verbose=verbose)
+                                   verbose=False)
 
     # num_train = len(train_data)
     # indices = list(range(num_train))

@@ -7,13 +7,16 @@ PATH = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Trai
 #                                                   glob.glob(PATH + "*Expression.csv") +\
 #                                                   glob.glob(PATH + "*CopyNumber.csv") +\
 #                                                   glob.glob(PATH + "*CGC_Mutations_by_Cell.csv")
-# cur_filenames = glob.glob(PATH + "*No_NA_ProteinQuant.csv") +\
-#               glob.glob(PATH + "*21Q2*Expression.csv") +\
-#               glob.glob(PATH + "*21Q2*CopyNumber.csv") +\
-#               glob.glob(PATH + "*21Q2*Mutations_by_Cell.csv")
+# cur_filenames = glob.glob(PATH + "*GDSC*.csv")
+# cur_filenames = glob.glob(PATH + "*miRNA*.csv") +\
+#               glob.glob(PATH + "*Chromatin*.csv") +\
+#               glob.glob(PATH + "*RPPA*.csv") +\
+#               glob.glob(PATH + "*Metabolomics*.csv")
 
-cur_filenames = [PATH+"TCGA_PreTraining_CopyNumber.csv", PATH+"TCGA_PreTraining_Expression.csv"]
+# cur_filenames = [PATH+"TCGA_PreTraining_CopyNumber.csv", PATH+"TCGA_PreTraining_Expression.csv"]
 # cur_filenames = [PATH+"DepMap_21Q1_Training_Expression.csv", PATH+"DepMap_21Q1_Training_CopyNumber.csv"]
+# cur_filenames = [PATH+"DepMap_21Q2_Expression.csv"]
+cur_filenames = [PATH+"DepMap_21Q2_CopyNumber.csv"]
 # cur_filenames = [PATH+"TCGA_PreTraining_Expression.csv"]
 
 for file_name in cur_filenames:

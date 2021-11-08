@@ -2,9 +2,7 @@
 # shellcheck disable=SC2206
 # Slurm does not support using variables in the #SBATCH section, so we need to set the job name in the submit command.
 #SBATCH --nodes=1
-#SBATCH --exclusive
 #SBATCH --ntasks-per-node=1
-#SBATCH -p compute_full_node
 #SBATCH --gpus-per-node=4
 #SBATCH --time=00:30:00
 

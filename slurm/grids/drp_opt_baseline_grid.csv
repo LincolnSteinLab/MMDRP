@@ -1,0 +1,2 @@
+CTRP_AAC_MORGAN_1024.hdf,0.5,8,5,drug exp,HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_BOTH_NoBottleNeck_NoTCGAPretrain_MergeByConcat_RMSELoss_MorganDrugs_drug_exp,both,1,0,0,0,concat,rmse
+CTRP_AAC_MORGAN_1024.hdf,1,40,5,drug cnv,HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_BOTH_NoBottleNeck_NoTCGAPretrain_MergeByConcat_RMSELoss_MorganDrugs_drug_cnv,both,1,0,0,0,concat,rmse

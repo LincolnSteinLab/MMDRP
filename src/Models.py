@@ -1,5 +1,12 @@
+from typing import List
+
 import torch
 import torch.nn as nn
+# from torch.autograd import Variable
+from torch.autograd.grad_mode import F
+from torch.nn import Parameter
+from torch.nn.init import xavier_normal_, kaiming_normal_
+from torch_geometric.nn import GCNConv
 
 from CustomPytorchLayers import CustomCoder, CustomDense, CustomCNN
 
@@ -57,7 +64,8 @@ class AE(nn.Module):
 
 
 class DNNAutoEncoder(nn.Module):
-    def __init__(self, input_dim, first_layer_size, code_layer_size, num_layers, batchnorm_list=None,
+    def __init__(self, input_dim: int, first_layer_size: int, code_layer_size: int, num_layers: int,
+                 batchnorm_list=None,
                  act_fun_list=None, dropout_list=0.0, name=""):
         super(DNNAutoEncoder, self).__init__()
         # Determine batch norm as a whole for this DNN
@@ -71,11 +79,15 @@ class DNNAutoEncoder(nn.Module):
 
         if dropout_list is None or dropout_list == "none" or dropout_list == 0.0:
             dropout_list = [0.0] * num_layers
+        elif isinstance(dropout_list, float):
+            dropout_list = [dropout_list] * num_layers
 
+        # Make Encoder including the code layer itself
         self.encoder = CustomCoder(input_size=input_dim, first_layer_size=first_layer_size,
                                    code_layer_size=code_layer_size, num_layers=num_layers, encode=True,
                                    code_layer=True, act_fun_list=act_fun_list, batchnorm_list=batchnorm_list,
                                    dropout_list=dropout_list, name=name)
+        # Make Decoder excluding the code layer
         self.decoder = CustomCoder(input_size=input_dim, first_layer_size=first_layer_size,
                                    code_layer_size=code_layer_size, num_layers=num_layers, encode=False,
                                    code_layer=False, act_fun_list=act_fun_list, batchnorm_list=batchnorm_list,
@@ -232,11 +244,23 @@ class DrugResponsePredictor(nn.Module):
     Optional: User can convert the encoder modules to half (FP16) precision
     """
 
-    def __init__(self, layer_sizes=None, gpu_locs=None, encoder_requires_grad=False, act_fun_list=None,
-                 batchnorm_list=None, dropout_list=0.0, *encoders):
+    def __init__(self,
+                 layer_sizes=None,
+                 encoder_requires_grad: bool = False,
+                 gnn_info: List = (False, None),
+                 act_fun_list=None,
+                 batchnorm_list=None, dropout_list=0.0, merge_method: str = "concat", *encoders):
+
         super(DrugResponsePredictor, self).__init__()
-        if gpu_locs is not None:
-            assert len(gpu_locs) == len(encoders), "gpu_locs:" + str(len(gpu_locs)) + ", encoders:" + str(len(encoders))
+        self.merge_method = merge_method
+        self.gnn_info = gnn_info
+
+        if self.merge_method not in ["concat", "sum"]:
+            print("Current given merge method is:", self.merge_method)
+            exit("Current implemented merge methods are: concat, sum")
+
+        # if gpu_locs is not None:
+        #     assert len(gpu_locs) == len(encoders), "gpu_locs:" + str(len(gpu_locs)) + ", encoders:" + str(len(encoders))
         if batchnorm_list is None or batchnorm_list is False:
             batchnorm_list = [False] * len(layer_sizes)
         elif batchnorm_list is True:
@@ -253,7 +277,7 @@ class DrugResponsePredictor(nn.Module):
 
         self.encoders = encoders
         self.len_encoder_list = len(self.encoders)
-        self.gpu_locs = gpu_locs
+        # self.gpu_locs = gpu_locs
         self.layer_sizes = layer_sizes
         self.encoder_requires_grad = encoder_requires_grad
 
@@ -261,37 +285,58 @@ class DrugResponsePredictor(nn.Module):
         for encoder in self.encoders:
             for param in encoder.parameters():
                 param.requires_grad = self.encoder_requires_grad
+
         if self.encoder_requires_grad is True:
             self.encoders = [encoder.train() for encoder in self.encoders]
         else:
             self.encoders = [encoder.eval() for encoder in self.encoders]
 
         # Transfer each module to requested GPU
-        if self.gpu_locs is not None:
+        # if self.gpu_locs is not None:
             # print("Transferring encoder modules to GPU...")
-            self.encoders = [encoder.to("cuda:" + str(self.gpu_locs[i]), non_blocking=True) for i, encoder in
-                             zip(range(len(self.gpu_locs)), self.encoders)]
-            # Generate the outputs using a random tensor (similar to a dry-run)
+            # self.encoders = [encoder.to("cuda:" + str(self.gpu_locs[i]), non_blocking=True) for i, encoder in
+            #                  zip(range(len(self.gpu_locs)), self.encoders)]
+
+        # Generate the outputs using a random tensor (similar to a dry-run)
+        if gnn_info[0] is False:
             encoder_outputs = [
-                encoder(torch.FloatTensor(2, encoder.input_size).to("cuda:" + str(self.gpu_locs[i]),
-                                                                    non_blocking=True)) for
-                i, encoder in zip(range(len(self.gpu_locs)), self.encoders)]
+                encoder(torch.FloatTensor(2, encoder.input_size).to("cpu")) for
+                encoder in self.encoders]
+            # The size of the input to the first layer is the sum of the sizes of the outputs of the encoder layers
+            self.encoder_out_sizes = [output.shape[1] for output in encoder_outputs]
+
         else:
-            # print("Transferring encoder modules to CPU...")
-            # TODO: What if user wants to use CPU?
-            # Transfer everything to default GPU: 0
-            self.encoders = [encoder.to("cpu") for encoder in self.encoders]
-            encoder_outputs = [encoder(torch.Tensor(2, encoder.input_size).to("cpu")) for encoder in
-                               self.encoders]
+            # GNN output size should be given in gnn_info, otherwise it's difficult to do a dry run
+            encoder_outputs = [
+                encoder(torch.FloatTensor(2, encoder.input_size).to("cpu")) for
+                encoder in self.encoders[1:]]
+            self.encoder_out_sizes = [gnn_info[1]] + [output.shape[1] for output in encoder_outputs]
+            # print("self.encoder_out_sizes:", self.encoder_out_sizes)
+        # else:
+        #     raise NotImplementedError
+        #     # print("Transferring encoder modules to CPU...")
+        #     # Transfer everything to default GPU: 0
+        #     self.encoders = [encoder.to("cpu") for encoder in self.encoders]
+        #     encoder_outputs = [encoder(torch.Tensor(2, encoder.input_size).to("cpu")) for encoder in
+        #                        self.encoders]
 
         # Convert Python list to torch.ModuleList so that torch can 'see' the parameters of each module
         self.encoders = nn.ModuleList(self.encoders)
 
         # The size of the input to the first layer is the sum of the sizes of the outputs of the encoder layers
-        self.encoder_out_sizes = [output.shape[1] for output in encoder_outputs]
-        self.drp_input_size = sum(self.encoder_out_sizes)
-        # print("Sum width of the encoder outputs is:", self.drp_input_size)
-        self.layer_sizes = [self.drp_input_size] + layer_sizes
+        # self.encoder_out_sizes = [output.shape[1] for output in encoder_outputs]
+        if self.merge_method == "sum" or self.merge_method == "multiply":
+            assert len(set(self.encoder_out_sizes)) == 1, \
+                "Encoder outputs have different sizes, cannot sum or multiply! Have: " + str(self.encoder_out_sizes)
+
+        if self.merge_method == 'concat':
+            self.drp_input_size = sum(self.encoder_out_sizes)
+            self.layer_sizes = [self.drp_input_size] + layer_sizes
+        else:
+            self.drp_input_size = encoder_outputs[0].shape[1]  # code size is the same for all encoders
+            self.layer_sizes = [self.drp_input_size] + layer_sizes
+
+        print("Size of DRP input is:", self.drp_input_size)
 
         drp_layers = [CustomDense(input_size=self.layer_sizes[i],
                                   hidden_size=self.layer_sizes[i + 1],
@@ -300,15 +345,15 @@ class DrugResponsePredictor(nn.Module):
                                   dropout=dropout_list[i],
                                   name="drp_" + str(i)) for i in
                       range(len(self.layer_sizes) - 1)]
-        if self.gpu_locs is not None:
-            # TODO: setup model-parallel multi-gpu here
+        self.drp_module = nn.Sequential(*drp_layers)
+        # if self.gpu_locs is not None:
+        #     TODO: setup model-parallel multi-gpu here
             # Note: NeuralNets.ModuleList modules are not connected together in any way, so cannot use instead of NeuralNets.Sequential!
-            self.drp_module = nn.Sequential(*drp_layers).cuda()
-        else:
+        # else:
             # drp_layers = [CustomDense(input_size=self.layer_sizes[i],
             #                           hidden_size=self.layer_sizes[i + 1]) for i in
             #               range(len(self.layer_sizes) - 1)]
-            self.drp_module = nn.Sequential(*drp_layers).to("cpu")
+            # self.drp_module = nn.Sequential(*drp_layers).to("cpu")
 
     def forward(self, *inputs):
         # TODO this "is.instance" might cause a slow down
@@ -317,10 +362,36 @@ class DrugResponsePredictor(nn.Module):
             print("Number of inputs should match the number of encoders and must be in the same order, got")
             raise AssertionError("len(inputs):", len(inputs), "!=", "len_encoder_list", self.len_encoder_list)
 
-        encoder_outs = [self.encoders[i](inputs[i]) for i in
-                        range(len(self.encoders))]
+        # print("encoder input data sizes are:", print(inputs[0].shape), print(inputs[1].shape))
+        # print(self.encoders[0])
+        # print(self.encoders[1])
+
+        if self.gnn_info[0] is False:
+            encoder_outs = [self.encoders[i](inputs[i]) for i in
+                            range(len(self.encoders))]
+        else:
+            # GNN input must be handled differently
+            gnn_output = self.encoders[0](inputs[0].x, inputs[0].edge_index, inputs[0].edge_attr, inputs[0].batch)
+
+            # encoder_outs = [gnn_output] + [self.encoders[i](inputs[0].omic_data[i]) for i in
+            #                                range(len(inputs[0].omic_data))]
+            encoder_outs = [gnn_output] + [self.encoders[i](inputs[1][i - 1]) for i in
+                                           range(1, len(self.encoders))]
+
+        # print("encoder output sizes are:", print(encoder_outs[0].shape), print(encoder_outs[1].shape))
+
+        # print("Drug output shape is:", encoder_outs[0].shape)
+
+        if self.merge_method == "sum":
+            drp_input = torch.sum(torch.stack(encoder_outs, dim=1), dim=1)
+        else:
+            drp_input = torch.cat(encoder_outs, 1)
+
+        # print("DRP Input shape is:", drp_input.shape)
+        # exit()
+        # if self.merge_method == "multiply":
+        #     drp_input = torch.sum(torch.vstack(encoder_outs), dim=0)
         # Concatenate the outputs by rows
-        drp_input = torch.cat(encoder_outs, 1)
 
         return self.drp_module(drp_input)
 
@@ -432,3 +503,474 @@ class FullDrugResponsePredictorTest(nn.Module):
         #     drp_input = self.drp_module[i](drp_input)
         return self.drp_module(drp_input)
         # return drp_input
+
+
+class LMF(nn.Module):
+    """
+    Low-rank Multimodal Fusion
+    """
+
+    def __init__(self, drp_layer_sizes: List,
+                 encoder_requires_grad: bool = True,
+                 gnn_info: List = (False, None),
+                 output_dim: int = 256,
+                 rank: int = 4,
+                 act_fun_list=None,
+                 batchnorm_list=None,
+                 dropout_list=0.0,
+                 *encoders):
+        """
+        Args:
+            input_dims - a length-3 tuple, contains (audio_dim, video_dim, text_dim)
+            hidden_dims - another length-3 tuple, hidden dims of the sub-networks
+            text_out - int, specifying the resulting dimensions of the text subnetwork
+            dropouts - a length-4 tuple, contains (audio_dropout, video_dropout, text_dropout, post_fusion_dropout)
+            output_dim - int, specifying the size of output
+            rank - int, specifying the size of rank in LMF
+        Output:
+            (return value in forward) a scalar value between -3 and 3
+        """
+        super(LMF, self).__init__()
+        self.output_dim = output_dim
+        self.rank = rank
+        self.gnn_info = gnn_info
+
+        if batchnorm_list is None or batchnorm_list is False:
+            batchnorm_list = [False] * len(drp_layer_sizes)
+        elif batchnorm_list is True:
+            batchnorm_list = [True] * len(drp_layer_sizes)
+        else:
+            Warning("Incorrect batchnorm_list argument, defaulting to False")
+            batchnorm_list = [False] * len(drp_layer_sizes)
+
+        if dropout_list is None or dropout_list == "none" or dropout_list == 0.0:
+            dropout_list = [0.0] * len(drp_layer_sizes)
+
+        if act_fun_list is None:
+            act_fun_list = [None] * len(drp_layer_sizes)
+
+        self.encoders = encoders
+        self.len_encoder_list = len(self.encoders)
+        self.layer_sizes = [self.output_dim] + drp_layer_sizes
+        self.encoder_requires_grad = encoder_requires_grad
+
+        # Ensure encoders' weights are frozen (for batchnorm_list to work properly)
+        # TODO REMOVE
+        # for encoder in self.encoders:
+        #     for param in encoder.parameters():
+        #         param.requires_grad = self.encoder_requires_grad
+        # if self.encoder_requires_grad is True:
+        #     self.encoders = [encoder.train() for encoder in self.encoders]
+        # else:
+        #     self.encoders = [encoder.eval() for encoder in self.encoders]
+
+        # Transfer each module to requested GPU
+        # self.encoders = [encoder.to("cuda:0", non_blocking=True) for encoder in self.encoders]
+
+        # Generate the outputs using a random tensor (a kind of dry-run)
+        if self.gnn_info[0] is False:
+            # encoder_outputs = [
+            #     encoder(torch.FloatTensor(2, encoder.input_size).to("cuda:0",
+            #                                                         non_blocking=True)) for encoder in self.encoders]
+            encoder_outputs = [
+                encoder(torch.FloatTensor(2, encoder.input_size)) for encoder in self.encoders]
+            # The size of the input to the first layer is the sum of the sizes of the outputs of the encoder layers
+            self.encoder_out_sizes = [output.shape[1] for output in encoder_outputs]
+        else:
+            # GNN output size should be given in gnn_info, otherwise it's difficult to do a dry run
+            # encoder_outputs = [
+                # encoder(torch.FloatTensor(2, encoder.input_size).to("cuda:0",
+                #                                                     non_blocking=True)) for
+                # encoder in self.encoders[1:]]
+            encoder_outputs = [
+                encoder(torch.FloatTensor(2, encoder.input_size)) for
+                encoder in self.encoders[1:]]
+            self.encoder_out_sizes = [gnn_info[1]] + [output.shape[1] for output in encoder_outputs]
+
+        # Convert Python list to torch.ModuleList so that torch can 'see' the parameters of each module
+        # self.encoder_list = NeuralNets.ModuleList(self.encoder_list)
+
+        # self.encoder_in_sizes = [encoder.input_size for encoder in self.encoders]
+
+        self.drp_input_size = sum(self.encoder_out_sizes)
+        print("Sum width of the encoder outputs is:", self.drp_input_size)
+        # self.layer_sizes = [self.drp_input_size] + layer_sizes
+
+        # Note: NeuralNets.ModuleList modules are not connected together in any way, so cannot use instead of NeuralNets.Sequential!
+        drp_layers = [CustomDense(input_size=self.layer_sizes[i],
+                                  hidden_size=self.layer_sizes[i + 1],
+                                  act_fun=act_fun_list[i],
+                                  batch_norm=batchnorm_list[i],
+                                  dropout=dropout_list[i],
+                                  name="drp_" + str(i)) for i in
+                      range(len(self.layer_sizes) - 1)]
+        # self.drp_module = nn.Sequential(*drp_layers).cuda()
+        self.drp_module = nn.Sequential(*drp_layers)
+
+        self.encoders = nn.ModuleList(self.encoders)
+        # print("self.drp_module length:", len(self.drp_module))
+        print("self.encoders length:", len(self.encoders))
+        print("self.encoder_out_sizes:", self.encoder_out_sizes)
+
+        # dimensions are specified in the order of audio, video and text
+        # self.audio_in = input_dims[0]
+        # self.video_in = input_dims[1]
+        # self.text_in = input_dims[2]
+        #
+        # self.audio_hidden = hidden_dims[0]
+        # self.video_hidden = hidden_dims[1]
+        # self.text_hidden = hidden_dims[2]
+
+        # self.text_out = text_out
+
+        # define the pre-fusion subnetworks
+        # self.audio_subnet = SubNet(self.audio_in, self.audio_hidden, self.audio_prob)
+        # self.video_subnet = SubNet(self.video_in, self.video_hidden, self.video_prob)
+        # self.text_subnet = TextSubNet(self.text_in, self.text_hidden, self.text_out, dropout=self.text_prob)
+
+        # define the post_fusion layers
+        # self.post_fusion_dropout = nn.Dropout(p=self.post_fusion_prob)
+        # self.post_fusion_layer_1 = nn.Linear((self.text_out + 1) * (self.video_hidden + 1) * (self.audio_hidden + 1), self.post_fusion_dim)
+
+        self.all_factors = nn.ParameterList()
+        for i in range(len(self.encoders)):
+            cur_factor = Parameter(torch.Tensor(self.rank, self.encoder_out_sizes[i] + 1, self.output_dim))
+            # init the factors
+            xavier_normal_(cur_factor)
+            self.all_factors.append(cur_factor)
+
+        self.fusion_weights = Parameter(torch.Tensor(1, self.rank))
+        xavier_normal_(self.fusion_weights)
+
+        self.fusion_bias = Parameter(torch.Tensor(1, self.output_dim))
+        self.fusion_bias.data.fill_(0)
+
+    def forward(self, *inputs):
+        """
+        Args:
+            audio_x: tensor of shape (batch_size, audio_in)
+            video_x: tensor of shape (batch_size, video_in)
+            text_x: tensor of shape (batch_size, sequence_len, text_in)
+        """
+
+        if self.gnn_info[0] is False:
+            assert len(inputs) == self.len_encoder_list, \
+                "Number of inputs should match the number of encoders and must be in the same order. len(inputs): " +\
+                str(len(inputs)) + ", len_encoder_list: " + str(self.len_encoder_list)
+
+            encoder_outs = [self.encoders[i](inputs[i]) for i in
+                            range(len(self.encoders))]
+        else:
+            # GNN data input must be handled differently
+            gnn_output = self.encoders[0](inputs[0].x, inputs[0].edge_index, inputs[0].edge_attr, inputs[0].batch)
+            # gnn_output = self.encoders[0](inputs[0][0], inputs[0][1], inputs[0][2], inputs[0][3])
+            # TODO Re-order manually until torch_geometric Dataloader solution is found
+            # cur_omics = inputs[0].omic_data
+            # len_enc = len(inputs[0].omic_data[0])
+            # len_batch = len(inputs[0].omic_data)
+            # correct_omics = []
+            # for i in range(len_enc):
+            #     correct_omics.append(torch.vstack([cur_omics[j][i] for j in range(len_batch)]))
+
+            encoder_outs = [gnn_output] + [self.encoders[i](inputs[1][i - 1]) for i in
+                                           range(1, len(self.encoders))]
+
+        # TODO REMOVE
+        # print(encoder_outs)
+
+        batch_size = encoder_outs[1].shape[0]
+
+        # next we perform low-rank multimodal fusion
+        # here is a more efficient implementation than the one the paper describes
+        # basically swapping the order of summation and element-wise product
+        if encoder_outs[0].is_cuda:
+            DTYPE = torch.cuda.FloatTensor
+        else:
+            DTYPE = torch.FloatTensor
+
+        _encoder_outs = []
+        for i in range(len(encoder_outs)):
+            _encoder_outs.append(
+                torch.cat((torch.ones((batch_size, 1), requires_grad=False).type(DTYPE), encoder_outs[i]),
+                          dim=1))
+
+        # _audio_h = torch.cat((Variable(torch.ones(batch_size, 1).type(DTYPE), requires_grad=False), audio_h), dim=1)
+        # _video_h = torch.cat((Variable(torch.ones(batch_size, 1).type(DTYPE), requires_grad=False), video_h), dim=1)
+        # _text_h = torch.cat((Variable(torch.ones(batch_size, 1).type(DTYPE), requires_grad=False), text_h), dim=1)
+
+        fusions = []
+        for i in range(len(encoder_outs)):
+            fusions.append(torch.matmul(_encoder_outs[i], self.all_factors[i]))
+        # fusion_audio = torch.matmul(_audio_h, self.audio_factor)
+        # fusion_video = torch.matmul(_video_h, self.video_factor)
+        # fusion_text = torch.matmul(_text_h, self.text_factor)
+
+        fusion_zy = fusions[0]
+        for i in range(1, len(fusions)):
+            fusion_zy = fusion_zy * fusions[i]
+        # fusion_zy = fusion_audio * fusion_video * fusion_text
+
+        # output = torch.sum(fusion_zy, dim=0).squeeze()
+        # print("fusion_zy shape:", fusion_zy.shape)
+        # print("fusion_weights shape:", self.fusion_weights.shape)
+        # use linear transformation instead of simple summation, more flexibility
+        fusion_output = torch.matmul(self.fusion_weights, fusion_zy.permute(1, 0, 2)).squeeze() + self.fusion_bias
+        fusion_output = fusion_output.view(-1, self.output_dim)
+        # print("fusion_output shape:", fusion_output.shape)
+        # if self.use_softmax:
+        #     output = F.softmax(output)
+
+        # TODO REMOVE
+        # print(fusion_output)
+        # Pass the output to the DRP layers
+        output = self.drp_module(fusion_output)
+
+        return output
+
+
+class LMFTest(nn.Module):
+    """
+    Low-rank Multimodal Fusion
+    """
+
+    def __init__(self, drp_layer_sizes: List,
+                 encoder_requires_grad: bool = True,
+                 gnn_info: List = (False, None),
+                 output_dim: int = 256,
+                 rank: int = 4,
+                 act_fun_list=None,
+                 batchnorm_list=None,
+                 dropout_list=0.0,
+                 *encoders):
+        """
+        Args:
+            input_dims - a length-3 tuple, contains (audio_dim, video_dim, text_dim)
+            hidden_dims - another length-3 tuple, hidden dims of the sub-networks
+            text_out - int, specifying the resulting dimensions of the text subnetwork
+            dropouts - a length-4 tuple, contains (audio_dropout, video_dropout, text_dropout, post_fusion_dropout)
+            output_dim - int, specifying the size of output
+            rank - int, specifying the size of rank in LMF
+        Output:
+            (return value in forward) a scalar value between -3 and 3
+        """
+        super(LMFTest, self).__init__()
+        self.output_dim = output_dim
+        self.rank = rank
+        self.gnn_info = gnn_info
+
+        if batchnorm_list is None or batchnorm_list is False:
+            batchnorm_list = [False] * len(drp_layer_sizes)
+        elif batchnorm_list is True:
+            batchnorm_list = [True] * len(drp_layer_sizes)
+        else:
+            Warning("Incorrect batchnorm_list argument, defaulting to False")
+            batchnorm_list = [False] * len(drp_layer_sizes)
+
+        if dropout_list is None or dropout_list == "none" or dropout_list == 0.0:
+            dropout_list = [0.0] * len(drp_layer_sizes)
+
+        if act_fun_list is None:
+            act_fun_list = [None] * len(drp_layer_sizes)
+
+        self.encoders = encoders
+        self.len_encoder_list = len(self.encoders)
+        self.layer_sizes = [self.output_dim] + drp_layer_sizes
+        self.encoder_requires_grad = encoder_requires_grad
+
+        # Ensure encoders' weights are frozen (for batchnorm_list to work properly)
+        # TODO REMOVE
+        # for encoder in self.encoders:
+        #     for param in encoder.parameters():
+        #         param.requires_grad = self.encoder_requires_grad
+        # if self.encoder_requires_grad is True:
+        #     self.encoders = [encoder.train() for encoder in self.encoders]
+        # else:
+        #     self.encoders = [encoder.eval() for encoder in self.encoders]
+
+        # Transfer each module to requested GPU
+        # self.encoders = [encoder.to("cuda:0", non_blocking=True) for encoder in self.encoders]
+
+        # Generate the outputs using a random tensor (a kind of dry-run)
+        if self.gnn_info[0] is False:
+            # encoder_outputs = [
+            #     encoder(torch.FloatTensor(2, encoder.input_size).to("cuda:0",
+            #                                                         non_blocking=True)) for encoder in self.encoders]
+            encoder_outputs = [
+                encoder(torch.FloatTensor(2, encoder.input_size)) for encoder in self.encoders]
+            # The size of the input to the first layer is the sum of the sizes of the outputs of the encoder layers
+            self.encoder_out_sizes = [output.shape[1] for output in encoder_outputs]
+        else:
+            # GNN output size should be given in gnn_info, otherwise it's difficult to do a dry run
+            # encoder_outputs = [
+                # encoder(torch.FloatTensor(2, encoder.input_size).to("cuda:0",
+                #                                                     non_blocking=True)) for
+                # encoder in self.encoders[1:]]
+            encoder_outputs = [
+                encoder(torch.FloatTensor(2, encoder.input_size)) for
+                encoder in self.encoders[1:]]
+            self.encoder_out_sizes = [gnn_info[1]] + [output.shape[1] for output in encoder_outputs]
+
+        # Convert Python list to torch.ModuleList so that torch can 'see' the parameters of each module
+        # self.encoder_list = NeuralNets.ModuleList(self.encoder_list)
+
+        # self.encoder_in_sizes = [encoder.input_size for encoder in self.encoders]
+
+        self.drp_input_size = sum(self.encoder_out_sizes)
+        print("Sum width of the encoder outputs is:", self.drp_input_size)
+        # self.layer_sizes = [self.drp_input_size] + layer_sizes
+
+        # Note: NeuralNets.ModuleList modules are not connected together in any way, so cannot use instead of NeuralNets.Sequential!
+        drp_layers = [CustomDense(input_size=self.layer_sizes[i],
+                                  hidden_size=self.layer_sizes[i + 1],
+                                  act_fun=act_fun_list[i],
+                                  batch_norm=batchnorm_list[i],
+                                  dropout=dropout_list[i],
+                                  name="drp_" + str(i)) for i in
+                      range(len(self.layer_sizes) - 1)]
+        # self.drp_module = nn.Sequential(*drp_layers).cuda()
+        self.drp_module = nn.Sequential(*drp_layers)
+
+        self.encoders = nn.ModuleList(self.encoders)
+        # print("self.drp_module length:", len(self.drp_module))
+        print("self.encoders length:", len(self.encoders))
+        print("self.encoder_out_sizes:", self.encoder_out_sizes)
+
+        # dimensions are specified in the order of audio, video and text
+        # self.audio_in = input_dims[0]
+        # self.video_in = input_dims[1]
+        # self.text_in = input_dims[2]
+        #
+        # self.audio_hidden = hidden_dims[0]
+        # self.video_hidden = hidden_dims[1]
+        # self.text_hidden = hidden_dims[2]
+
+        # self.text_out = text_out
+
+        # define the pre-fusion subnetworks
+        # self.audio_subnet = SubNet(self.audio_in, self.audio_hidden, self.audio_prob)
+        # self.video_subnet = SubNet(self.video_in, self.video_hidden, self.video_prob)
+        # self.text_subnet = TextSubNet(self.text_in, self.text_hidden, self.text_out, dropout=self.text_prob)
+
+        # define the post_fusion layers
+        # self.post_fusion_dropout = nn.Dropout(p=self.post_fusion_prob)
+        # self.post_fusion_layer_1 = nn.Linear((self.text_out + 1) * (self.video_hidden + 1) * (self.audio_hidden + 1), self.post_fusion_dim)
+
+        self.all_factors = nn.ParameterList()
+        for i in range(len(self.encoders)):
+            cur_factor = Parameter(torch.Tensor(self.rank, self.encoder_out_sizes[i] + 1, self.output_dim))
+            # init the factors
+            xavier_normal_(cur_factor)
+            self.all_factors.append(cur_factor)
+
+        self.fusion_weights = Parameter(torch.Tensor(1, self.rank))
+        xavier_normal_(self.fusion_weights)
+
+        self.fusion_bias = Parameter(torch.Tensor(1, self.output_dim))
+        self.fusion_bias.data.fill_(0)
+
+    def forward(self, *inputs):
+        """
+        Args:
+            audio_x: tensor of shape (batch_size, audio_in)
+            video_x: tensor of shape (batch_size, video_in)
+            text_x: tensor of shape (batch_size, sequence_len, text_in)
+        """
+
+        if self.gnn_info[0] is False:
+            assert len(inputs) == self.len_encoder_list, \
+                "Number of inputs should match the number of encoders and must be in the same order. len(inputs): " +\
+                str(len(inputs)) + ", len_encoder_list: " + str(self.len_encoder_list)
+
+            encoder_outs = [self.encoders[i](inputs[i]) for i in
+                            range(len(self.encoders))]
+        else:
+            # GNN data input must be handled differently
+            # gnn_output = self.encoders[0](inputs[0].x, inputs[0].edge_index, inputs[0].edge_attr, inputs[0].batch)
+            gnn_output = self.encoders[0](inputs[0][0], inputs[0][1], inputs[0][2], inputs[0][3])
+            # TODO Re-order manually until torch_geometric Dataloader solution is found
+            # cur_omics = inputs[0].omic_data
+            # len_enc = len(inputs[0].omic_data[0])
+            # len_batch = len(inputs[0].omic_data)
+            # correct_omics = []
+            # for i in range(len_enc):
+            #     correct_omics.append(torch.vstack([cur_omics[j][i] for j in range(len_batch)]))
+
+            encoder_outs = [gnn_output] + [self.encoders[i](inputs[1][i - 1]) for i in
+                                           range(1, len(self.encoders))]
+
+        # TODO REMOVE
+        # print(encoder_outs)
+
+        batch_size = encoder_outs[1].shape[0]
+
+        # next we perform low-rank multimodal fusion
+        # here is a more efficient implementation than the one the paper describes
+        # basically swapping the order of summation and element-wise product
+        if encoder_outs[0].is_cuda:
+            DTYPE = torch.cuda.FloatTensor
+        else:
+            DTYPE = torch.FloatTensor
+
+        _encoder_outs = []
+        for i in range(len(encoder_outs)):
+            _encoder_outs.append(
+                torch.cat((torch.ones((batch_size, 1), requires_grad=False).type(DTYPE), encoder_outs[i]),
+                          dim=1))
+
+        # _audio_h = torch.cat((Variable(torch.ones(batch_size, 1).type(DTYPE), requires_grad=False), audio_h), dim=1)
+        # _video_h = torch.cat((Variable(torch.ones(batch_size, 1).type(DTYPE), requires_grad=False), video_h), dim=1)
+        # _text_h = torch.cat((Variable(torch.ones(batch_size, 1).type(DTYPE), requires_grad=False), text_h), dim=1)
+
+        fusions = []
+        for i in range(len(encoder_outs)):
+            fusions.append(torch.matmul(_encoder_outs[i], self.all_factors[i]))
+        # fusion_audio = torch.matmul(_audio_h, self.audio_factor)
+        # fusion_video = torch.matmul(_video_h, self.video_factor)
+        # fusion_text = torch.matmul(_text_h, self.text_factor)
+
+        fusion_zy = fusions[0]
+        for i in range(1, len(fusions)):
+            fusion_zy = fusion_zy * fusions[i]
+        # fusion_zy = fusion_audio * fusion_video * fusion_text
+
+        # output = torch.sum(fusion_zy, dim=0).squeeze()
+        # print("fusion_zy shape:", fusion_zy.shape)
+        # print("fusion_weights shape:", self.fusion_weights.shape)
+        # use linear transformation instead of simple summation, more flexibility
+        fusion_output = torch.matmul(self.fusion_weights, fusion_zy.permute(1, 0, 2)).squeeze() + self.fusion_bias
+        fusion_output = fusion_output.view(-1, self.output_dim)
+        # print("fusion_output shape:", fusion_output.shape)
+        # if self.use_softmax:
+        #     output = F.softmax(output)
+
+        # TODO REMOVE
+        # print(fusion_output)
+        # Pass the output to the DRP layers
+        output = self.drp_module(fusion_output)
+
+        return output
+
+class GraphEncoder(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels):
+        super(GraphEncoder, self).__init__()
+        self.conv1 = GCNConv(in_channels, hidden_channels, cached=True)
+        self.conv_mu = GCNConv(hidden_channels, out_channels, cached=True)
+        self.conv_logstd = GCNConv(hidden_channels, out_channels, cached=True)
+
+    def forward(self, x, edge_index):
+        x = F.relu(self.conv1(x, edge_index))
+        return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
+
+
+class GraphDiscriminator(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels):
+        super(GraphDiscriminator, self).__init__()
+        self.lin1 = torch.nn.Linear(in_channels, hidden_channels)
+        self.lin2 = torch.nn.Linear(hidden_channels, hidden_channels)
+        self.lin3 = torch.nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x):
+        x = F.relu(self.lin1(x))
+        x = F.relu(self.lin2(x))
+        x = self.lin3(x)
+        return x

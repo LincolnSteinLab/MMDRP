@@ -1,5 +1,7 @@
 # This script contains an encoder of expression data either for an auto-encoder or to predict
 # secondary labels such as tumor types
+import copy
+import json
 import os
 import argparse
 import time
@@ -10,11 +12,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils import data
 
+from CustomFunctions import MyLoggerCreator, WriterCLIReporter
+from loss_functions import RMSLELoss, RMSELoss
 from DRPPreparation import create_cv_folds
 from DataImportModules import OmicData
 from Models import DNNAutoEncoder
 from TrainFunctions import omic_train, cross_validate
-from TuneTrainables import OmicTrainable, file_name_dict, get_layer_configs
+from TuneTrainables import OmicTrainable, file_name_dict, get_layer_configs, MorganTrainable
 
 import ray
 from ray import tune
@@ -31,11 +35,51 @@ device = torch.device("cuda:0" if use_cuda else "cpu")
 cudnn.benchmark = True
 cudnn.deterministic = True
 
+mut_param_ranges = {
+    "first_layer_size": tune.randint(2 ** 7, 2 ** 9),
+    "code_layer_size": tune.randint(2 ** 6, 2 ** 8),
+    "num_layers": tune.randint(2, 4)
+}
+cnv_param_ranges = {
+    "first_layer_size": tune.randint(2 ** 9, 6000),
+    "code_layer_size": tune.randint(2 ** 8, 4000),
+    "num_layers": tune.randint(2, 4)
+}
+exp_param_ranges = {
+    "first_layer_size": tune.randint(2 ** 9, 6000),
+    "code_layer_size": tune.randint(2 ** 8, 4000),
+    "num_layers": tune.randint(2, 4)
+}
+prot_param_ranges = {
+    "first_layer_size": tune.randint(2 ** 9, 4000),
+    "code_layer_size": tune.randint(2 ** 8, 2500),
+    "num_layers": tune.randint(2, 4)
+}
+mirna_param_ranges = {
+    "first_layer_size": tune.randint(2 ** 7, 2 ** 10),
+    "code_layer_size": tune.randint(2 ** 6, 2 ** 9),
+    "num_layers": tune.randint(2, 3)
+}
+hist_param_ranges = {
+    "first_layer_size": tune.randint(2 ** 3, 2 ** 5),
+    "code_layer_size": tune.randint(2 ** 6, 2 ** 9),
+    "num_layers": tune.randint(2, 3)
+}
+rppa_param_ranges = {
+    "first_layer_size": tune.randint(2 ** 5, 2 ** 8),
+    "code_layer_size": tune.randint(2 ** 4, 2 ** 7),
+    "num_layers": tune.randint(2, 3)
+}
+metab_param_ranges = {
+    "first_layer_size": tune.randint(2 ** 5, 2 ** 8),
+    "code_layer_size": tune.randint(2 ** 4, 2 ** 7),
+    "num_layers": tune.randint(2, 3)
+}
+
 
 def train_auto_encoder(args, config, local_dir, data_dir):
     # batch_size = int(args.batch_size)
     # resume = bool(int(args.resume))
-    num_epochs = int(args.num_epochs)
     checkpoint_dir = local_dir + '/' + args.name_tag
 
     # Create a checkpoint directory based on given name_tag if it doesn't exist
@@ -43,78 +87,122 @@ def train_auto_encoder(args, config, local_dir, data_dir):
         print("Creating checkpoint directory:", args.name_tag)
         os.makedirs(checkpoint_dir)
 
-    training_set = OmicData(path=data_dir,
-                            omic_file_name=file_name_dict[pretrain + args.data_type + "_file_name"])
+    # training_set = OmicData(path=data_dir,
+    #                         omic_file_name=file_name_dict[pretrain + args.data_type + "_file_name"])
 
-    # Create model for validation/max_epoch determination
-    all_act_funcs, all_batch_norm, all_dropout = get_layer_configs(config, model_type="dnn")
-    cur_model = DNNAutoEncoder(input_dim=training_set.width(), first_layer_size=config["first_layer_size"],
-                               code_layer_size=config["code_layer_size"], num_layers=config["num_layers"],
-                               batchnorm_list=all_batch_norm, act_fun_list=all_act_funcs,
-                               dropout_list=all_dropout, name=args.data_type)
+    # # Create model for validation/max_epoch determination
+    # all_act_funcs, all_batch_norm, all_dropout = get_layer_configs(config, model_type="dnn")
+    # cur_model = DNNAutoEncoder(input_dim=training_set.width(), first_layer_size=config["first_layer_size"],
+    #                            code_layer_size=config["code_layer_size"], num_layers=config["num_layers"],
+    #                            batchnorm_list=all_batch_norm, act_fun_list=all_act_funcs,
+    #                            dropout_list=all_dropout, name=args.data_type)
+    # cur_model = cur_model.float()
+
+    cur_trainable = tune.with_parameters(OmicTrainable,
+                                         max_epochs=int(args.max_num_epochs),
+                                         pretrain=pretrain,
+                                         data_type=args.data_type,
+                                         n_folds=int(args.n_folds),
+                                         loss_type=args.loss_type,
+                                         omic_standardize=args.omic_standardize
+                                         )
+
+    if args.global_code_size is not None:
+        global_code_tag = "GlobalCodeSize_" + args.global_code_size + "_"
+        # Manually ensure that code layer size is the one we actually want
+        config['code_layer_size'] = int(args.global_code_size)
+    else:
+        global_code_tag = ""
+
+    cur_trainable = cur_trainable(config=config, logger_creator=MyLoggerCreator)
+    cur_model = copy.deepcopy(cur_trainable.cur_model)
     cur_model = cur_model.float()
+    cur_model = cur_model.cuda()
 
-    final_filename = checkpoint_dir + '/' + args.data_type.upper() + '_' + pretrain + untrained + "Omic_AutoEncoder_Checkpoint.pt"
+    final_filename = checkpoint_dir + '/' + args.data_type.upper() + '_' + pretrain + \
+                     untrained + global_code_tag + "Omic_AutoEncoder_Checkpoint.pt"
     if bool(int(args.untrained_model)) is True:
         print("Saving untrained model (simply instantiated) based on given configuration")
         print("Final file name:", final_filename)
         torch.save(cur_model, final_filename)
         exit(0)
 
-    cur_model = cur_model.cuda()
+    if args.loss_type == "mae":
+        criterion = nn.L1Loss().cuda()
+    elif args.loss_type == "mse":
+        criterion = nn.MSELoss().cuda()
+    elif args.loss_type == "rmsle":
+        criterion = RMSLELoss().cuda()
+    elif args.loss_type == "rmse":
+        criterion = RMSELoss().cuda()
+    else:
+        exit("Unknown loss function requested")
 
-    criterion = nn.MSELoss().cuda()
     if pretrain != "":
         cur_sample_column_name = "tcga_sample_id"
     else:
         cur_sample_column_name = "stripped_cell_line_name"
 
     # Use 1/5 of the data for validation, ONLY to determine the number of epochs to train before over-fitting
-    cv_folds = create_cv_folds(train_data=training_set, train_attribute_name="data_info",
-                               sample_column_name=cur_sample_column_name, n_folds=5,
-                               class_data_index=None, subset_type="cell_line",
-                               class_column_name="primary_disease", seed=42, verbose=False)
-    train_valid_fold = [cv_folds[0]]
+    cur_train_data, cur_cv_folds = cur_trainable.train_data, cur_trainable.cv_folds
+
+    # cv_folds = create_cv_folds(train_data=training_set, train_attribute_name="data_info",
+    #                            sample_column_name=cur_sample_column_name, n_folds=5,
+    #                            class_data_index=None, subset_type="cell_line",
+    #                            class_column_name="primary_disease", seed=42, verbose=False)
+    train_valid_fold = [cur_cv_folds[0]]
+    print("CV folds:", train_valid_fold)
     # Determine the number of epochs required for training before validation loss doesn't improve
     print("Using validation set to determine performance plateau\n" +
           "Batch Size:", config['batch_size'])
-    train_loss, valid_loss, final_epoch = cross_validate(train_data=training_set, train_function=omic_train,
-                                                         cv_folds=train_valid_fold, batch_size=config['batch_size'],
-                                                         cur_model=cur_model, criterion=criterion,
-                                                         patience=5,
-                                                         delta=0.001,
-                                                         max_epochs=num_epochs,
-                                                         learning_rate=config['lr'],
-                                                         verbose=True)
+    cur_model, \
+    train_loss, \
+    valid_loss, \
+    untrained_loss, \
+    final_epoch = cross_validate(train_data=cur_train_data,
+                                 train_function=omic_train,
+                                 cv_folds=train_valid_fold,
+                                 batch_size=config['batch_size'],
+                                 cur_model=cur_model,
+                                 criterion=criterion,
+                                 patience=15,
+                                 delta=0.01,
+                                 max_epochs=int(args.max_num_epochs),
+                                 learning_rate=config['lr'],
+                                 theoretical_loss=False,
+                                 final_full_train=True,
+                                 omic_standardize=args.omic_standardize,
+                                 verbose=True)
 
-    print("Starting training based on number of epochs before validation loss worsens")
-    cur_model = DNNAutoEncoder(input_dim=training_set.width(), first_layer_size=config["first_layer_size"],
-                               code_layer_size=config["code_layer_size"], num_layers=config["num_layers"],
-                               batchnorm_list=all_batch_norm, act_fun_list=all_act_funcs,
-                               dropout_list=all_dropout, name=args.data_type)
-    cur_model = cur_model.float()
-    cur_model = cur_model.cuda()
-    optimizer = optim.Adam(cur_model.parameters(), lr=config["lr"])
+    # print("Starting training based on number of epochs before validation loss worsens")
+    # cur_model = copy.deepcopy(cur_trainable.cur_model)
+    # cur_model = cur_model.float()
+    # cur_model = cur_model.cuda()
 
-    train_loader = data.DataLoader(training_set, batch_size=config["batch_size"], num_workers=0, shuffle=True,
-                                   pin_memory=True)
+    # cur_model = DNNAutoEncoder(input_dim=training_set.width(), first_layer_size=config["first_layer_size"],
+    #                            code_layer_size=config["code_layer_size"], num_layers=config["num_layers"],
+    #                            batchnorm_list=all_batch_norm, act_fun_list=all_act_funcs,
+    #                            dropout_list=all_dropout, name=args.data_type)
 
-    avg_train_losses = []
-    start = time.time()
-    for epoch in range(final_epoch):
-        train_losses = omic_train(cur_model, criterion, optimizer, epoch=epoch, train_loader=train_loader, verbose=True)
+    # optimizer = optim.Adam(cur_model.parameters(), lr=config["lr"])
+    # train_loader = data.DataLoader(cur_train_data, batch_size=config["batch_size"], num_workers=0, shuffle=True,
+    #                                pin_memory=True)
+    # avg_train_losses = []
+    # start = time.time()
+    # for epoch in range(final_epoch):
+    #     train_losses = omic_train(cur_model, criterion, optimizer, epoch=epoch, train_loader=train_loader, verbose=True)
+    #
+    #     avg_train_losses.append(train_losses.avg)
+    #
+    #     duration = time.time() - start
+    #     print_msg = (f'[{epoch:>{int(args.max_num_epochs)}}/{final_epoch:>{int(args.max_num_epochs)}}] ' +
+    #                  f'train_loss: {train_losses.avg:.5f} ' +
+    #                  f'epoch_time: {duration:.4f}')
+    #
+    #     print(print_msg)
+    #     start = time.time()
 
-        avg_train_losses.append(train_losses.avg)
-
-        duration = time.time() - start
-        print_msg = (f'[{epoch:>{num_epochs}}/{final_epoch:>{num_epochs}}] ' +
-                     f'train_loss: {train_losses.avg:.5f} ' +
-                     f'epoch_time: {duration:.4f}')
-
-        print(print_msg)
-        start = time.time()
-
-        # print("Finished epoch in", str(epoch + 1), str(duration), "seconds")
+    # print("Finished epoch in", str(epoch + 1), str(duration), "seconds")
     print("Final file name:", final_filename)
     # Save entire model, not just the state dict
     torch.save(cur_model, final_filename)
@@ -136,178 +224,37 @@ def main(num_samples=10, gpus_per_trial=1.0, cpus_per_trial=6.0):
         # When connecting to an existing cluster, _lru_evict, num_cpus and num_gpus must not be provided.
         ray.init(address=args.address)
 
-    if args.data_type in ["cnv", "exp"]:
-        print("Data type is:", args.data_type)
-        config = {
-            "first_layer_size": tune.randint(2 ** 9, 8192),
-            "code_layer_size": tune.randint(2 ** 8, 4096),
-            "num_layers": tune.randint(2, 5),
-            'n_folds': 10,
-            'max_epochs': int(args.max_num_epochs),
-            "activation_1": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
-            "activation_2": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
-            "activation_3": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
-            "activation_4": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
-            "activation_5": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
-            "batch_norm_1": tune.choice([True, False]),
-            "batch_norm_2": tune.choice([True, False]),
-            "batch_norm_3": tune.choice([True, False]),
-            "batch_norm_4": tune.choice([True, False]),
-            "batch_norm_5": tune.choice([True, False]),
-            "dropout_1": tune.uniform(0, 0.25),
-            "dropout_2": tune.uniform(0, 0.25),
-            "dropout_3": tune.uniform(0, 0.25),
-            "dropout_4": tune.uniform(0, 0.25),
-            "dropout_5": tune.uniform(0, 0.25),
-            "lr": tune.loguniform(1e-4, 1e-3),
-            "batch_size": tune.randint(4, 32)
-        }
-        if args.data_type == "cnv":
-            current_best_params = [{
-                'first_layer_size': 529,
-                'code_layer_size': 831,
-                'num_layers': 2,
-                'n_folds': 10,
-                'max_epochs': 20,
-                "activation_1": 'none',
-                "activation_2": 'relu',
-                "activation_3": 'none',
-                "activation_4": 'none',
-                "activation_5": 'lrelu',
-                "batch_norm_1": True,
-                "batch_norm_2": False,
-                "batch_norm_3": False,
-                "batch_norm_4": False,
-                "batch_norm_5": False,
-                "dropout_1": 0.08025254867287786,
-                "dropout_2": 0.1325349864894265,
-                "dropout_3": 0.08693645180241394,
-                "dropout_4": 0.15921556875763504,
-                "dropout_5": 0.05414028134057667,
-                "lr": 0.0008629716445108056,
-                "batch_size": 24
-            }]
-        else:
-            # Exp data type
-            current_best_params = [{
-                'first_layer_size': 4096,
-                'code_layer_size': 1024,
-                'num_layers': 2,
-                'n_folds': 10,
-                'max_epochs': 20,
-                "activation_1": 'relu',
-                "activation_2": 'relu',
-                "activation_3": 'relu',
-                "activation_4": 'relu',
-                "activation_5": 'relu',
-                "batch_norm_1": True,
-                "batch_norm_2": True,
-                "batch_norm_3": True,
-                "batch_norm_4": True,
-                "batch_norm_5": True,
-                "dropout_1": 0.01,
-                "dropout_2": 0.01,
-                "dropout_3": 0.01,
-                "dropout_4": 0.01,
-                "dropout_5": 0.01,
-                "lr": 0.0001,
-                "batch_size": 10
-            }]
+    config = {
+        # "act_fun": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
+        # "batchnorm": tune.choice([True, False]),
+        # "dropout": tune.uniform(0.0, 0.1),
+        "lr": tune.loguniform(1e-5, 1e-3),
+        "batch_size": tune.choice([4, 8, 16, 32])
+    }
 
-    elif args.data_type == "mut":
-        print("Data type is:", args.data_type)
-        config = {
-            "first_layer_size": tune.randint(2 ** 7, 2 ** 10),
-            "code_layer_size": tune.randint(2 ** 6, 2 ** 9),
-            "num_layers": tune.randint(2, 5),
-            "activation_1": tune.choice(['none', 'relu', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "activation_2": tune.choice(['none', 'relu', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "activation_3": tune.choice(['none', 'relu', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "activation_4": tune.choice(['none', 'relu', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "activation_5": tune.choice(['none', 'relu', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "batch_norm_1": tune.choice([True, False]),
-            "batch_norm_2": tune.choice([True, False]),
-            "batch_norm_3": tune.choice([True, False]),
-            "batch_norm_4": tune.choice([True, False]),
-            "batch_norm_5": tune.choice([True, False]),
-            "dropout_1": tune.uniform(0, 0.25),
-            "dropout_2": tune.uniform(0, 0.25),
-            "dropout_3": tune.uniform(0, 0.25),
-            "dropout_4": tune.uniform(0, 0.25),
-            "dropout_5": tune.uniform(0, 0.25),
-            "lr": tune.loguniform(1e-4, 1e-3),
-            "batch_size": tune.randint(4, 32)
-        }
-        current_best_params = [{
-            'first_layer_size': 763,
-            'code_layer_size': 500,
-            'num_layers': 2,
-            "activation_1": 'prelu',
-            "activation_2": 'prelu',
-            "activation_3": 'prelu',
-            "activation_4": 'prelu',
-            "activation_5": 'prelu',
-            "batch_norm_1": False,
-            "batch_norm_2": False,
-            "batch_norm_3": False,
-            "batch_norm_4": False,
-            "batch_norm_5": False,
-            "dropout_1": 0.0,
-            "dropout_2": 0.0,
-            "dropout_3": 0.0,
-            "dropout_4": 0.0,
-            "dropout_5": 0.0,
-            "lr": 0.0002672,
-            "batch_size": 32
-        }]
+    # Merge parameter ranges with config depending on input args
+    if "mut" == args.data_type:
+        config = {**config, **mut_param_ranges}
+    if "cnv" == args.data_type:
+        config = {**config, **cnv_param_ranges}
+    if "exp" == args.data_type:
+        config = {**config, **exp_param_ranges}
+    if "prot" == args.data_type:
+        config = {**config, **prot_param_ranges}
+    if "mirna" == args.data_type:
+        config = {**config, **mirna_param_ranges}
+    if "hist" == args.data_type:
+        config = {**config, **hist_param_ranges}
+    if "rppa" == args.data_type:
+        config = {**config, **rppa_param_ranges}
+    if "metab" == args.data_type:
+        config = {**config, **metab_param_ranges}
 
-    else:
-        # prot
-        print("Data type is:", args.data_type)
-        config = {
-            "first_layer_size": tune.randint(2 ** 9, 6000),
-            "code_layer_size": tune.randint(2 ** 8, 5000),
-            "num_layers": tune.randint(2, 5),
-            "activation_1": tune.choice(['none', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "activation_2": tune.choice(['none', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "activation_3": tune.choice(['none', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "activation_4": tune.choice(['none', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "activation_5": tune.choice(['none', 'lrelu', 'prelu', 'sigmoid', 'tanh']),
-            "batch_norm_1": tune.choice([True, False]),
-            "batch_norm_2": tune.choice([True, False]),
-            "batch_norm_3": tune.choice([True, False]),
-            "batch_norm_4": tune.choice([True, False]),
-            "batch_norm_5": tune.choice([True, False]),
-            "dropout_1": tune.uniform(0, 0.25),
-            "dropout_2": tune.uniform(0, 0.25),
-            "dropout_3": tune.uniform(0, 0.25),
-            "dropout_4": tune.uniform(0, 0.25),
-            "dropout_5": tune.uniform(0, 0.25),
-            "lr": tune.loguniform(1e-4, 1e-3),
-            "batch_size": tune.randint(4, 32)
-        }
-        current_best_params = [{
-            'first_layer_size': 2530,
-            'code_layer_size': 1875,
-            'num_layers': 2,
-            "activation_1": 'prelu',
-            "activation_2": 'prelu',
-            "activation_3": 'prelu',
-            "activation_4": 'prelu',
-            "activation_5": 'prelu',
-            "batch_norm_1": False,
-            "batch_norm_2": False,
-            "batch_norm_3": False,
-            "batch_norm_4": False,
-            "batch_norm_5": False,
-            "dropout_1": 0.0,
-            "dropout_2": 0.0,
-            "dropout_3": 0.0,
-            "dropout_4": 0.0,
-            "dropout_5": 0.0,
-            "lr": 0.00010036,
-            "batch_size": 31
-        }]
+    # Check if a global code layer size should be used
+    if args.global_code_size is not None:
+        print("Global code layer size is given, will remove code layer choice ranges from hyper-parameter list")
+        # reset code_layer_size to given input
+        config['code_layer_size'] = int(args.global_code_size)
 
     # scheduler = PopulationBasedTraining(
     #     time_attr='training_iteration',
@@ -336,7 +283,10 @@ def main(num_samples=10, gpus_per_trial=1.0, cpus_per_trial=6.0):
                                          max_epochs=int(args.max_num_epochs),
                                          pretrain=pretrain,
                                          data_type=args.data_type,
-                                         n_folds=int(args.n_folds))
+                                         n_folds=int(args.n_folds),
+                                         loss_type=args.loss_type,
+                                         omic_standardize=args.omic_standardize
+                                         )
 
     # # Get untrained loss
     # data_dir = "/home/l/lstein/ftaj/.conda/envs/drp1/Data/DRP_Training_Data/"
@@ -368,12 +318,12 @@ def main(num_samples=10, gpus_per_trial=1.0, cpus_per_trial=6.0):
         grace_period=5,
         reduction_factor=3,
         brackets=3)
-    hyperopt_search = HyperOptSearch(points_to_evaluate=current_best_params,
-                                     random_state_seed=42)
+    hyperopt_search = HyperOptSearch(random_state_seed=42)
     # hyperopt_search = HyperOptSearch()
 
-    reporter = CLIReporter(
+    reporter = WriterCLIReporter(
         # parameter_columns=["l1", "l2", "lr", "batch_size"],
+        checkpoint_dir="HyperOpt_CV_" + pretrain + args.data_type,
         metric_columns=["avg_cv_train_loss", "avg_cv_valid_loss", "training_iteration", "max_final_epoch",
                         "time_this_iter_s"])
 
@@ -388,7 +338,8 @@ def main(num_samples=10, gpus_per_trial=1.0, cpus_per_trial=6.0):
     result = tune.run(
         # partial(train_auto_encoder, checkpoint_dir="/.mounts/labs/steinlab/scratch/ftaj/", data_dir=data_dir),
         cur_trainable,
-        name="HyperOpt_CV_" + pretrain + args.data_type, verbose=1, resume=resume,
+        name="HyperOpt_CV_" + pretrain + args.data_type,
+        verbose=1, resume=resume,
         resources_per_trial={"cpu": cpus_per_trial, "gpu": gpus_per_trial},  # "memory": 8 * 10 ** 9},
         config=config,
         num_samples=num_samples,
@@ -410,6 +361,13 @@ def main(num_samples=10, gpus_per_trial=1.0, cpus_per_trial=6.0):
     print("Best trial final sum validation loss: {}".format(
         best_trial.last_result["avg_cv_valid_loss"]))
     print("Best trial number of epochs:", best_trial.last_result["training_iteration"])
+
+    # Save best config
+    best_config = best_trial.config
+
+    print("Saving best config as JSON to", local_dir + "HyperOpt_CV_" + pretrain + args.data_type + '/best_config.json')
+    with open(local_dir + "HyperOpt_CV_" + pretrain + args.data_type + '/best_config.json', 'w') as fp:
+        json.dump(best_config, fp)
 
     # print("Best trial final validation accuracy: {}".format(
     #     best_trial.last_result["accuracy"]))
@@ -457,9 +415,15 @@ if __name__ == '__main__':
     parser.add_argument('--untrained_model', default='0',
                         help="Only instantiates the model and saves it without training")
 
+    parser.add_argument('--global_code_size',
+                        help='If code layers are to be summed, what global code layer should be used?',
+                        required=False)
+    parser.add_argument('--loss_type', help='Loss function used, choices are: mae, mse, rmse, rmsle', default='mae')
+    parser.add_argument('--omic_standardize', help='Whether to standardize omics data', action='store_true')
+
     # Training/model parameters if not running optimization
     parser.add_argument('--train', default='0')
-    parser.add_argument('--num_epochs', default='100')
+    # parser.add_argument('--num_epochs', default='100')
     parser.add_argument('--first_layer_size', required=False)
     parser.add_argument('--code_layer_size', required=False)
     parser.add_argument('--num_layers', required=False)
@@ -497,9 +461,21 @@ if __name__ == '__main__':
 
     if bool(int(args.train)) is True:
         PATH = "/scratch/l/lstein/ftaj/"
-        analysis = Analysis(experiment_dir=PATH + "HyperOpt_CV_" + pretrain + args.data_type + "/",
-                            default_metric="avg_cv_valid_loss", default_mode="min")
-        best_config = analysis.get_best_config()
+        file_address = PATH + "HyperOpt_CV_" + pretrain + args.data_type + '/best_config.json'
+        print("Best config file should be at:", file_address)
+        try:
+            with open(file_address, 'r') as fp:
+                best_config = json.load(fp)
+            print("Found best config:", best_config)
+            # analysis = Analysis(experiment_dir=PATH + "HyperOpt_DRP_" + tag + '_' + "_".join(args.data_types) + '_' + args.name_tag + "/",
+            #                     default_metric="avg_cv_valid_loss", default_mode="min")
+            # best_config = analysis.get_best_config()
+        except:
+            exit("Could not get best config from ray tune trial logdir")
+
+        # analysis = Analysis(experiment_dir=PATH + "HyperOpt_CV_" + pretrain + args.data_type + "/",
+        #                     default_metric="avg_cv_valid_loss", default_mode="min")
+        # best_config = analysis.get_best_config()
 
         train_auto_encoder(args, best_config, local_dir="/scratch/l/lstein/ftaj/",
                            data_dir='~/.conda/envs/drp1/Data/DRP_Training_Data/')

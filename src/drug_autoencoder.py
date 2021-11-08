@@ -1,4 +1,5 @@
 import argparse
+import copy
 import os
 
 import ray
@@ -12,6 +13,7 @@ from ray.tune.schedulers import ASHAScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from torch.utils import data
 
+from CustomFunctions import MyLoggerCreator, RMSLELoss, RMSELoss
 from DataImportModules import MorganData
 from Models import DNNAutoEncoder
 from TrainFunctions import morgan_train
@@ -23,55 +25,96 @@ use_cuda = torch.cuda.is_available()
 torch.cuda.device_count()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 # Turning off benchmarking makes highly dynamic models faster
-cudnn.benchmark = False
+cudnn.benchmark = True
 cudnn.deterministic = True
 
 
-def train_auto_encoder(config, local_dir, data_dir):
+
+def train():
+    model.train()
+    encoder_optimizer.zero_grad()
+    z = model.encode(data.x, data.train_pos_edge_index)
+
+    for i in range(5):
+        discriminator_optimizer.zero_grad()
+        discriminator_loss = model.discriminator_loss(z)
+        discriminator_loss.backward()
+        discriminator_optimizer.step()
+
+    loss = model.recon_loss(z, data.train_pos_edge_index)
+    loss = loss + model.reg_loss(z)
+    loss = loss + (1 / data.num_nodes) * model.kl_loss()
+    loss.backward()
+    encoder_optimizer.step()
+    return loss
+
+
+def train_auto_encoder(args, config, local_dir, data_dir):
     # TODO Implement CNN AutoEncoder Training
     # batch_size = int(args.batch_size)
     # resume = bool(int(args.resume))
     num_epochs = int(args.num_epochs)
     checkpoint_dir = local_dir + '/' + args.name_tag
-    morgan_file_name = "ChEMBL_Morgan_" + config["width"] + ".pkl"
+    morgan_file_name = "ChEMBL_Morgan_" + args.width + ".pkl"
 
     # Create a checkpoint directory based on given name_tag if it doesn't exist
     if not os.path.exists(checkpoint_dir):
         print("Creating checkpoint directory:", args.name_tag)
         os.makedirs(checkpoint_dir)
 
-    training_set = MorganData(path=data_dir, morgan_file_name=morgan_file_name)
-    train_loader = data.DataLoader(training_set, batch_size=config["batch_size"],
-                                   num_workers=0, shuffle=True)
+    cur_trainable = tune.with_parameters(MorganTrainable,
+                                         loss_type=args.loss_type,
+                                         morgan_width=int(args.width),
+                                         model_type=args.model_type,
+                                         )
+    cur_trainable = cur_trainable(config=config, logger_creator=MyLoggerCreator)
 
-    assert training_set.width() == int(
-        config["width"]), "The width of the given training set doesn't match the expected Morgan width."
+    if args.loss_type == "mae":
+        criterion = nn.L1Loss().cuda()
+    elif args.loss_type == "mse":
+        criterion = nn.MSELoss().cuda()
+    elif args.loss_type == "rmsle":
+        criterion = RMSLELoss().cuda()
+    elif args.loss_type == "rmse":
+        criterion = RMSELoss().cuda()
+    else:
+        exit("Unknown loss function requested")
+
+    train_loader = cur_trainable.train_loader
+    # training_set = MorganData(path=data_dir, morgan_file_name=morgan_file_name)
+    # train_loader = data.DataLoader(training_set, batch_size=config["batch_size"],
+    #                                num_workers=0, shuffle=True)
+
+    # assert training_set.width() == int(
+    #     config["width"]), "The width of the given training set doesn't match the expected Morgan width."
 
     # TODO add other hyperparameters
-    cur_model = DNNAutoEncoder(input_dim=int(config["width"]),
-                               first_layer_size=config["first_layer_size"],
-                               code_layer_size=config["code_layer_size"],
-                               num_layers=config["num_layers"],
-                               name="morgan")
+    # cur_model = DNNAutoEncoder(input_dim=int(config["width"]),
+    #                            first_layer_size=config["first_layer_size"],
+    #                            code_layer_size=config["code_layer_size"],
+    #                            num_layers=config["num_layers"],
+    #                            name="morgan")
+    cur_model = copy.deepcopy(cur_trainable.cur_model)
     cur_model = cur_model.float()
     cur_model = cur_model.cuda()
     last_epoch = 0
 
-    criterion = nn.MSELoss().cuda()
-    optimizer = optim.Adam(cur_model.parameters(), lr=config["lr"])
+    optimizer = cur_trainable.optimizer
+    # optimizer = optim.Adam(cur_model.parameters(), lr=config["lr"])
 
     # to track the average training loss per epoch as the model trains
     avg_train_losses = []
     for epoch in range(last_epoch, num_epochs):
-        train_losses = morgan_train(cur_model, criterion, optimizer, epoch=epoch, train_loader=train_loader)
+        train_losses = morgan_train(cur_model, criterion, optimizer, epoch=epoch, train_loader=train_loader,
+                                    verbose=True)
 
         avg_train_losses.append(train_losses.avg)
 
-        print_msg = ('[{epoch:>{epoch_len}}/{200:>{epoch_len}}] ' +
-                     'train_loss: {train_losses.avg:.5f} ' +
-                     'epoch_time: {duration:.4f}')
+        # print_msg = (f'[{epoch:>{epoch_len}}/{200:>{epoch_len}}] ' +
+        #              f'train_loss: {train_losses.avg:.5f} ' +
+        #              f'epoch_time: {duration:.4f}')
 
-        print(print_msg)
+        # print(print_msg)
         # print("Finished epoch in", str(epoch + 1), str(duration), "seconds")
         print("Final file name:", checkpoint_dir + '/Morgan_' + args.width + "_AutoEncoder_Checkpoint.pt")
         # Save the entire model, not just the state dict
@@ -105,9 +148,9 @@ def main(num_samples=10, max_num_epochs=100, gpus_per_trial=1.0, cpus_per_trial=
 
     if args.model_type == "dnn":
         config = {
-            "width": tune.choice(["512", "1024", "2048", "4096"]),
+            "width": tune.choice(["2048"]),
             "first_layer_size": tune.randint(2 ** 7, 2 ** 12),
-            "code_layer_size": tune.randint(2 ** 6, 2 ** 10),
+            "code_layer_size": 512,
             "num_layers": tune.randint(2, 5),
             "activation_1": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
             "activation_2": tune.choice(['none', 'relu', 'lrelu', 'prelu']),
@@ -280,6 +323,8 @@ if __name__ == '__main__':
                         required=False, default="dnn")
     parser.add_argument('--gpus_per_trial', help="Can be a float between 0 and 1, or higher", default="1.0")
 
+    parser.add_argument('--loss_type', help='Loss function used, choices are: mae, mse, rmse, rmsle', default='mae')
+
     # Training parameters ====
     parser.add_argument('--train', default='0')
     parser.add_argument('--num_epochs', default='100')
@@ -313,10 +358,34 @@ if __name__ == '__main__':
                        'code_layer_size': int(args.code_layer_size),
                        'num_layers': int(args.num_layers),
                        'batch_size': int(args.batch_size),
-                       'lr': float(args.lr)
+                       'lr': float(args.lr),
+                       "activation_1": 'relu',
+                       "activation_2": 'relu',
+                       "activation_3": 'relu',
+                       "activation_4": 'relu',
+                       "activation_5": 'relu',
+                       "batch_norm_1": True,
+                       "batch_norm_2": True,
+                       "batch_norm_3": True,
+                       "batch_norm_4": True,
+                       "batch_norm_5": True,
+                       "dropout_1": 0.0,
+                       "dropout_2": 0.0,
+                       "dropout_3": 0.0,
+                       "dropout_4": 0.0,
+                       "dropout_5": 0.0,
                        }
+        # current_best_params = [{
+        #     "width": "4096",
+        #     "first_layer_size": 2061,
+        #     "code_layer_size": 445,
+        #     "num_layers": 2,
+        #
+        #     "lr": 0.000121820,
+        #     "batch_size": 256
+        # }]
 
-        train_auto_encoder(best_config, local_dir="/scratch/l/lstein/ftaj/",
+        train_auto_encoder(args, best_config, local_dir="/scratch/l/lstein/ftaj/",
                            data_dir='~/.conda/envs/drp1/Data/DRP_Training_Data/')
         exit()
     # You can change the number of GPUs per trial here: (using int rounds floats down)

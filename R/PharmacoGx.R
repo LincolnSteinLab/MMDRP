@@ -103,6 +103,25 @@ setcolorder(final_ctrpv2_aac, neworder = c("cpd_name", "ccl_name", "primary_dise
 
 fwrite(final_ctrpv2_aac, "Data/DRP_Training_Data/CTRP_AAC_SMILES.txt")
 
+# ==== Update August 2021 =====
+# Fix Tipifarnbi SMILES
+require(data.table)
+ctrp_aac <- fread("Data/DRP_Training_Data/CTRP_AAC_SMILES.txt")
+ctrp_aac[cpd_name == "Tipifarnib"]$cpd_smiles <- "CN1C=NC=C1C(C2=CC=C(C=C2)Cl)(C3=CC4=C(C=C3)N(C(=O)C=C4C5=CC(=CC=C5)Cl)C)N"
+fwrite(ctrp_aac, "Data/DRP_Training_Data/CTRP_AAC_SMILES.txt")
+
+# ==== Update September 2021 ====
+# Add canonical SMILES for some drugs
+require(data.table)
+gdsc1_aac <- fread("Data/DRP_Training_Data/GDSC1_AAC_SMILES.txt")
+gdsc1_aac[cpd_name == "Tamoxifen"]$cpd_smiles <- "CCC(=C(C1=CC=CC=C1)C2=CC=C(C=C2)OCCN(C)C)C3=CC=CC=C3"
+gdsc1_aac[cpd_name == "JW-7-52-1"]$cpd_smiles <- "CCC(=O)N1CCN(CC1)C2=C(C=C(C=C2)N3C(=O)C=CC4=CN=C5C=CC(=CC5=C43)C6=CC7=CC=CC=C7N=C6)C(F)(F)F"
+gdsc1_aac[cpd_name == "KIN001-135"]$cpd_smiles <- "COC1=C(C=C2C(=C1)N=CN2C3=CC(=C(S3)C#N)OCC4=CC=CC=C4S(=O)(=O)C)OC"
+fwrite(gdsc1_aac, "Data/DRP_Training_Data/GDSC1_AAC_SMILES.txt")
+
+gdsc2_aac <- fread("Data/DRP_Training_Data/GDSC2_AAC_SMILES.txt")
+gdsc2_aac[cpd_name == "Tamoxifen"]$cpd_smiles <- "CCC(=C(C1=CC=CC=C1)C2=CC=C(C=C2)OCCN(C)C)C3=CC=CC=C3"
+fwrite(gdsc2_aac, "Data/DRP_Training_Data/GDSC2_AAC_SMILES.txt")
 
 # CCLE ====
 # ccle <- downloadPSet("CCLE")

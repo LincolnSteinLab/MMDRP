@@ -1,9 +1,12 @@
 # This file contains custom Pytorch layers for use in other DRP modules
 import sys
+from typing import List
 
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.nn.init import kaiming_normal_, xavier_normal_
+
 from collections import OrderedDict
 
 # activation_dict = NeuralNets.ModuleDict({
@@ -11,6 +14,7 @@ from collections import OrderedDict
 #     'prelu': NeuralNets.PReLU(),
 #     'relu': NeuralNets.ReLU()
 # })
+from CustomFunctions import init_module_weights
 
 
 class GaussianNoise(nn.Module):
@@ -54,21 +58,29 @@ class CustomDense(nn.Module):
             cur_act_fun = nn.LeakyReLU()
         elif act_fun == 'prelu':
             cur_act_fun = nn.PReLU()
+        elif act_fun == 'selu':
+            cur_act_fun = nn.SELU()
+        elif act_fun == 'silu':
+            cur_act_fun = nn.SiLU()
         elif act_fun == 'sigmoid':
             cur_act_fun = nn.Sigmoid()
         elif act_fun == 'tanh':
             cur_act_fun = nn.Tanh()
+
         else:
             Warning("Uknown activation function given, defaulting to ReLU")
             cur_act_fun = nn.ReLU()
 
         self.custom_dense = OrderedDict([
+            # init to Kaiming Normal, set biases to 0
             (name + "_linear", nn.Linear(in_features=input_size, out_features=hidden_size)),
             (name + "_batchnorm", nn.BatchNorm1d(num_features=hidden_size, affine=True, track_running_stats=False))
-            if batch_norm is True else (name + "identity", nn.Identity()),
+            if batch_norm is True else (name + "_identity", nn.Identity()),
             (name + "_activation", cur_act_fun),
             (name + "_dropout", nn.Dropout(p=dropout))])
-        self.custom_dense = nn.Sequential(self.custom_dense)
+        self.custom_dense = nn.Sequential(self.custom_dense)  # no star-expansion needed
+        init_module_weights(self.custom_dense, kaiming_normal_, bias=0.0)
+        # kaiming_normal_(self.custom_dense)
 
     def forward(self, x):
         return self.custom_dense(x)
@@ -78,11 +90,14 @@ class CustomCoder(nn.Module):
     """
     This class creates an encoder module that takes the first and last layer sizes as well as the desired
     number of layers in between, and returns an encoder neural network with the desired specifications.
+
+    When layer sizes aren't supplied layer by layer, the first layer and code layer sizes are used to
+    create a linearly decreasing list based on the number of layers
     """
 
     def __init__(self, input_size, coder_layer_sizes: list = None, first_layer_size: int = None,
                  code_layer_size: int = None, code_layer: bool = False, num_layers: int = None,
-                 batchnorm_list=None, act_fun_list: str = None, dropout_list=None,
+                 batchnorm_list=None, act_fun_list: List[str] = None, dropout_list=None,
                  encode: bool = True, name: str = ""):
         super(CustomCoder, self).__init__()
 
@@ -101,6 +116,8 @@ class CustomCoder(nn.Module):
 
         if act_fun_list is None:
             act_fun_list = [None] * num_layers
+        elif len(act_fun_list) == 1:  # assuming it's a list
+            act_fun_list = act_fun_list * num_layers
 
         self.batchnorm_list = batchnorm_list
         self.act_fun = act_fun_list
@@ -122,13 +139,12 @@ class CustomCoder(nn.Module):
             # np.linspace allows for the creation of an array with equidistant numbers from start to end
             if coder_layer_sizes is None:
                 coder_layer_sizes = np.linspace(first_layer_size, code_layer_size, num_layers).astype(int)
-
             # The first layer should take the data input width and then continue until the code layer
             self.coder = [CustomDense(input_size=self.input_size, hidden_size=coder_layer_sizes[0],
                                       act_fun=act_fun_list[0], batch_norm=batchnorm_list[0],
                                       dropout=dropout_list[0], name="encoder_0_" + name)] + \
                          [CustomDense(input_size=coder_layer_sizes[i], hidden_size=coder_layer_sizes[i + 1],
-                                      act_fun=act_fun_list[0], batch_norm=batchnorm_list[i + 1],
+                                      act_fun=act_fun_list[i + 1], batch_norm=batchnorm_list[i + 1],
                                       dropout=dropout_list[i + 1], name="encoder_" + str(i) + '_' + name) for i in
                           range(len(coder_layer_sizes) - 2)]
 
@@ -138,8 +154,9 @@ class CustomCoder(nn.Module):
                                            dropout=dropout_list[-1], name="code_layer_" + name)]
 
             self.coder = nn.Sequential(*self.coder)
-        # Mirror the encoder setup for decoder creation
+
         else:
+            # Mirror the encoder setup for decoder creation
             batchnorm_list_rev = batchnorm_list[::-1]
             dropout_list_rev = dropout_list[::-1]
             if coder_layer_sizes is None:
