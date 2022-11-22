@@ -65,7 +65,7 @@ def model_save(cv_index, cur_epoch, cur_model, cur_optimizer, train_losses, vali
                force: bool = False, sklearn: bool = False):
     if save_model_path is None:
         exit("Model Save Folder not provided, skipping model save...")
-    elif sklearn is True:
+    elif sklearn is True and ((cur_epoch % save_model_frequency == 0) or force is True):
         dump(cur_model, save_model_path + "/checkpoint_cv_" + str(cv_index) + ".joblib")
 
     # Forcing save ignores checkpointing frequency

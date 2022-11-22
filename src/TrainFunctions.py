@@ -1,22 +1,30 @@
 import copy
 # import re
+import sys
 import time
 import glob
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import torch
 import torch_geometric
+from captum.attr import IntegratedGradients
+from joblib import load
 from sklearn.metrics import mean_squared_error
 from torch import optim
 from torch.utils import data
 from torch.utils.data import SubsetRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 # from torch_geometric.data import DataLoader
+from sklearn.feature_selection import SelectKBest
+from sklearn.feature_selection import f_regression
 
 from CustomFunctions import AverageMeter, EarlyStopping, model_save
-from DataImportModules import AutoEncoderPrefetcher, DataPrefetcher, GNNDataPrefetcher
+from DataImportModules import AutoEncoderPrefetcher, DataPrefetcher, GNNDataPrefetcher, MyGNNData, GenFeatures
+from Models import LMFTest
+from drug_visualization import drug_interpret_viz
 
 
 def morgan_train(cur_model, criterion, optimizer, epoch, train_loader=None, valid_loader=None, verbose: bool = False):
@@ -206,8 +214,8 @@ def omic_train(cur_model, criterion, optimizer, epoch, train_loader=None, valid_
 
 
 def elasticnet_drp_train(cur_model, criterion, optimizer, epoch, train_loader=None, valid_loader=None,
-                     return_results: bool = False,
-              verbose: bool = False):
+                         return_results: bool = False,
+                         verbose: bool = False):
     data_time = AverageMeter('Data', ':6.3f')
     train_losses = AverageMeter('Training Loss', ':.4e')
     valid_losses = AverageMeter('Validation Loss', ':.4e')
@@ -245,21 +253,25 @@ def elasticnet_drp_train(cur_model, criterion, optimizer, epoch, train_loader=No
                 cur_dr_data = cur_dr_data.numpy()
                 cur_dr_target = cur_dr_target.numpy().ravel()
 
+                # print("cur_dr_data shape:", cur_dr_data.shape)
+                # print("cur_dr_target shape:", cur_dr_target.shape)
+                # print(cur_dr_target)
+                # exit(0)
                 cur_model.partial_fit(cur_dr_data, cur_dr_target)
                 # output = cur_model(*cur_dr_data)
                 # loss = criterion(output, cur_dr_target, cur_loss_weights)
 
                 if i % 1000 == 999:
-                #     # Sample losses every 1000 batches
-                #     train_losses.update(loss.item(), cur_dr_target.shape[0])
-                #     running_loss = loss.item()
+                    #     # Sample losses every 1000 batches
+                    #     train_losses.update(loss.item(), cur_dr_target.shape[0])
+                    #     running_loss = loss.item()
                     if verbose:
                         # print every 1000 mini-batches
                         print('[%d, %5d / %5d, %5d s] 1000 batches done!' %
                               (epoch, i, len_train_loader, time.time() - start_time))
-                #         # print('[%d, %5d / %5d, %5d s]' %
-                #         #       (epoch, i, len_train_loader, time.time() - start_time))
-                #     # running_loss = 0.0
+                    #         # print('[%d, %5d / %5d, %5d s]' %
+                    #         #       (epoch, i, len_train_loader, time.time() - start_time))
+                    #     # running_loss = 0.0
                     start_time = time.time()
 
                 # data_end_time = time.time()
@@ -287,8 +299,8 @@ def elasticnet_drp_train(cur_model, criterion, optimizer, epoch, train_loader=No
         i = 0
         running_loss = 0.0
         # with torch.no_grad():
-            # batch_start = time.time()
-            # end = time.time()
+        # batch_start = time.time()
+        # end = time.time()
         try:
             while cur_dr_data is not None:
                 i += 1
@@ -304,13 +316,19 @@ def elasticnet_drp_train(cur_model, criterion, optimizer, epoch, train_loader=No
                 # output = cur_model(*cur_dr_data)
                 # valid_loss = criterion(output, cur_dr_target, cur_loss_weights)
                 # Second argument is effectively the batch size
-                valid_losses.update(valid_loss, cur_dr_target.shape[0])
+                valid_losses.update(float(valid_loss), cur_dr_target.shape[0])
 
                 if return_results is True:
                     cur_targets = cur_dr_target.tolist()
                     cur_preds = cur_predictions.tolist()
+
+                    valid_loss = np.absolute(cur_dr_target - cur_predictions)
                     cur_losses = valid_loss.tolist()
 
+                    # print("cur_targets:", cur_targets)
+                    # print("cur_preds:", cur_preds)
+                    # print("cur_losses:", cur_losses)
+                    # exit(0)
                     # cur_targets = [target[0] for target in cur_targets]
                     # cur_preds = [pred[0] for pred in cur_preds]
                     # cur_losses = [loss[0] for loss in cur_losses]
@@ -324,7 +342,7 @@ def elasticnet_drp_train(cur_model, criterion, optimizer, epoch, train_loader=No
                     all_results.append(pd.DataFrame.from_dict(cur_dict))
 
                 cur_sample_info, cur_dr_data, cur_dr_target, cur_loss_weights = next(prefetcher)
-                running_loss += valid_loss.sum()
+                running_loss += np.mean(valid_loss)
                 if verbose:
                     if i % 200 == 199:  # print every 200 mini-batches
                         print('[%d, %5d / %5d] running valid loss: %.6f' %
@@ -342,7 +360,8 @@ def elasticnet_drp_train(cur_model, criterion, optimizer, epoch, train_loader=No
             return train_losses, valid_losses
 
 
-def drp_train(cur_model, criterion, optimizer, epoch, train_loader=None, valid_loader=None, return_results: bool = False,
+def drp_train(cur_model, criterion, optimizer, epoch, train_loader=None, valid_loader=None,
+              return_results: bool = False,
               verbose: bool = False):
     data_time = AverageMeter('Data', ':6.3f')
     train_losses = AverageMeter('Training Loss', ':.4e')
@@ -665,7 +684,9 @@ def cross_validate(train_data, train_function, cv_folds, batch_size: int, cur_mo
                    patience: int = 5, delta: float = 0.0001, max_epochs: int = 100, learning_rate: float = 0.001,
                    final_full_train: bool = False, NUM_WORKERS: int = 0, theoretical_loss: bool = False,
                    train_only: bool = False, omic_standardize: bool = False, summary_writer: SummaryWriter = None,
-                   save_cv_preds: bool = True, redo_validation: bool = False, save_epoch_results: bool = False,
+                   save_cv_preds: bool = True, redo_validation: bool = False,
+                   redo_interpretation: bool = None, min_target: float = None, dr_sub_cpd_names: [str] = None,
+                   save_epoch_results: bool = False,
                    epoch_save_folder: str = None,
                    save_model: bool = False, save_model_frequency: int = None, save_model_path: str = None,
                    resume: bool = False, to_gpu: bool = True, verbose: bool = False):
@@ -715,15 +736,16 @@ def cross_validate(train_data, train_function, cv_folds, batch_size: int, cur_mo
                 all_cv_idx = [int(s) for checkpoint in cv_checkpoints for s in re.findall(r'\d+', checkpoint)]
                 cv_index = max(all_cv_idx)
                 print("Loading checkpoing from:", save_model_path + "/checkpoint_cv_" + str(cv_index) + ".pt")
-                # Load checkpoint and check for max epoch
-                cur_checkpoint = torch.load(save_model_path + "/checkpoint_cv_" + str(cv_index) + ".pt")
-                cur_epoch = cur_checkpoint['epoch']
-                all_avg_train_losses = cur_checkpoint['all_avg_train_losses']
-                all_avg_valid_losses = cur_checkpoint['all_avg_valid_losses']
-                print("Loaded checkpoint with CV:", cv_index, "and epoch:", cur_epoch)
-                print("\t-> Best validation loss:", cur_checkpoint['early_stopper'].best_score)
-                checkpoint_early_stopper = cur_checkpoint['early_stopper']
-                all_final_epochs = cur_checkpoint['all_final_epochs']
+                if train_function != elasticnet_drp_train:
+                    # Load checkpoint and check for max epoch
+                    cur_checkpoint = torch.load(save_model_path + "/checkpoint_cv_" + str(cv_index) + ".pt")
+                    cur_epoch = cur_checkpoint['epoch']
+                    all_avg_train_losses = cur_checkpoint['all_avg_train_losses']
+                    all_avg_valid_losses = cur_checkpoint['all_avg_valid_losses']
+                    print("Loaded checkpoint with CV:", cv_index, "and epoch:", cur_epoch)
+                    print("\t-> Best validation loss:", cur_checkpoint['early_stopper'].best_score)
+                    checkpoint_early_stopper = cur_checkpoint['early_stopper']
+                    all_final_epochs = cur_checkpoint['all_final_epochs']
 
         while cv_index < n_folds:
             # Copy model and training data to keep each run independent
@@ -742,7 +764,7 @@ def cross_validate(train_data, train_function, cv_folds, batch_size: int, cur_mo
             else:
                 cur_fold_optimizer = None
 
-            if cv_resume is True:
+            if cv_resume is True and train_function != elasticnet_drp_train:
                 cur_fold_model.load_state_dict(cur_checkpoint['model_state_dict'])
                 cur_fold_optimizer.load_state_dict(cur_checkpoint['optimizer_state_dict'])
                 early_stopper = checkpoint_early_stopper
@@ -764,6 +786,9 @@ def cross_validate(train_data, train_function, cv_folds, batch_size: int, cur_mo
             if omic_standardize is True:
                 # NEW: Standardize training and validation data based on training data's statistics
                 cur_fold_train_data.standardize(train_idx=cur_fold[0])
+
+            # if train_function == elasticnet_drp_train:
+            #     cur_fold_train_data.feature_selection(train_idx=cur_fold[0], method=f_regression, k=2000)
 
             cur_train_sampler = SubsetRandomSampler(cur_fold[0])
             cur_valid_sampler = SubsetRandomSampler(cur_fold[1])
@@ -849,10 +874,18 @@ def cross_validate(train_data, train_function, cv_folds, batch_size: int, cur_mo
                     all_avg_valid_losses.append(early_stopper.best_score)
                     all_final_epochs.append(early_stopper.best_epoch)
                     if save_model is True:
-                        model_save(cv_index, cur_epoch, cur_fold_model, cur_fold_optimizer, train_losses, valid_losses,
-                                   all_avg_train_losses, all_avg_valid_losses, save_model_path, save_model_frequency,
-                                   early_stopper, all_final_epochs,
-                                   force=True)
+                        if train_function == elasticnet_drp_train:
+                            model_save(cv_index, cur_epoch, cur_fold_model, None, None, None,
+                                       all_avg_train_losses, all_avg_valid_losses, save_model_path,
+                                       save_model_frequency,
+                                       early_stopper, all_final_epochs, sklearn=True, force=True)
+                        else:
+                            model_save(cv_index, cur_epoch, cur_fold_model, cur_fold_optimizer, train_losses,
+                                       valid_losses,
+                                       all_avg_train_losses, all_avg_valid_losses, save_model_path,
+                                       save_model_frequency,
+                                       early_stopper, all_final_epochs,
+                                       force=True)
                     break
 
                 elif cur_epoch == max_epochs:
@@ -861,24 +894,35 @@ def cross_validate(train_data, train_function, cv_folds, batch_size: int, cur_mo
                     all_avg_valid_losses.append(early_stopper.best_score)
                     all_final_epochs.append(cur_epoch)
                     if save_model is True:
-                        model_save(cv_index, cur_epoch, cur_fold_model, cur_fold_optimizer, train_losses, valid_losses,
-                                   all_avg_train_losses, all_avg_valid_losses, save_model_path, save_model_frequency,
-                                   early_stopper, all_final_epochs,
-                                   force=True)
+                        if train_function == elasticnet_drp_train:
+                            model_save(cv_index, cur_epoch, cur_fold_model, None, None, None,
+                                       all_avg_train_losses, all_avg_valid_losses, save_model_path,
+                                       save_model_frequency,
+                                       early_stopper, all_final_epochs, sklearn=True, force=True)
+                        else:
+                            model_save(cv_index, cur_epoch, cur_fold_model, cur_fold_optimizer, train_losses,
+                                       valid_losses,
+                                       all_avg_train_losses, all_avg_valid_losses, save_model_path,
+                                       save_model_frequency,
+                                       early_stopper, all_final_epochs,
+                                       force=True)
 
                 else:
                     if save_model is True:
-                        model_save(cv_index, cur_epoch, cur_fold_model, cur_fold_optimizer, train_losses, valid_losses,
-                                   all_avg_train_losses, all_avg_valid_losses, save_model_path, save_model_frequency,
-                                   early_stopper, all_final_epochs)
+                        if train_function == elasticnet_drp_train:
+                            model_save(cv_index, cur_epoch, cur_fold_model, None, None, None,
+                                       all_avg_train_losses, all_avg_valid_losses, save_model_path,
+                                       save_model_frequency,
+                                       early_stopper, all_final_epochs, sklearn=True)
+                        else:
+                            model_save(cv_index, cur_epoch, cur_fold_model, cur_fold_optimizer, train_losses,
+                                       valid_losses,
+                                       all_avg_train_losses, all_avg_valid_losses, save_model_path,
+                                       save_model_frequency,
+                                       early_stopper, all_final_epochs)
 
                 # Add to epoch counter
                 cur_epoch += 1
-
-            if train_function == elasticnet_drp_train:
-                model_save(cv_index, cur_epoch, cur_fold_model, None, None, None,
-                           all_avg_train_losses, all_avg_valid_losses, save_model_path, save_model_frequency,
-                           early_stopper, all_final_epochs)
 
             if verbose:
                 print("CV", str(cv_index), ": Avg Train Loss ->", all_avg_train_losses,
@@ -923,18 +967,24 @@ def cross_validate(train_data, train_function, cv_folds, batch_size: int, cur_mo
         for checkpoint in cv_checkpoints:
             # Try to load checkpoint
             cur_cv_idx = int(re.findall(r'\d+', checkpoint)[0])
-            print("Loading checkpoint from:", save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".pt")
-            cur_checkpoint = torch.load(save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".pt")
-            # Copy the fold's model and data (to avoid cross-contamination of model and standardization parameters)
-            cur_fold_model = copy.deepcopy(cur_model)
-            cur_fold_model.load_state_dict(cur_checkpoint['model_state_dict'])
+            if train_function != elasticnet_drp_train:
+                print("Loading checkpoint from:", save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".pt")
+                cur_checkpoint = torch.load(save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".pt")
+                # Copy the fold's model and data (to avoid cross-contamination of model and standardization parameters)
+                cur_fold_model = copy.deepcopy(cur_model)
+                cur_fold_model.load_state_dict(cur_checkpoint['model_state_dict'])
+                cur_epoch = cur_checkpoint['epoch']
+                print("Loaded checkpoint with CV:", cur_cv_idx, "and epoch:", cur_epoch)
+            else:
+                print("Loading checkpoint from:", save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".joblib")
+                cur_fold_model = load(save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".joblib")
+                cur_epoch = None
+
             if to_gpu is True:
                 cur_fold_model.cuda()
 
             cur_fold_train_data = copy.deepcopy(train_data)
 
-            cur_epoch = cur_checkpoint['epoch']
-            print("Loaded checkpoint with CV:", cur_cv_idx, "and epoch:", cur_epoch)
             cur_fold = cv_folds[cur_cv_idx]
             cur_valid_sampler = SubsetRandomSampler(cur_fold[1])
 
@@ -958,18 +1008,249 @@ def cross_validate(train_data, train_function, cv_folds, batch_size: int, cur_mo
             else:
                 tag = "ResponseOnly"
 
-            data_types = epoch_save_folder.split("Drugs")[1][1:]
-            cv_folder = "/scratch/l/lstein/ftaj//CV_Results/" +\
-                "HyperOpt_DRP_" + tag + '_' + data_types + '_' + name_tag
-
-            dest = cv_folder + "/CV_Index_" + str(cur_cv_idx) + "_Epoch_" + \
-                   str(cur_epoch) + '_final_validation_results.csv'
+            if train_function != elasticnet_drp_train:
+                data_types = epoch_save_folder.split("Drugs")[1][1:]
+                cv_folder = "/scratch/l/lstein/ftaj//CV_Results/" + \
+                            "HyperOpt_DRP_" + tag + '_' + data_types + '_' + name_tag
+                dest = cv_folder + "/CV_Index_" + str(cur_cv_idx) + "_Epoch_" + \
+                       str(cur_epoch) + '_final_validation_results.csv'
+            else:
+                data_types = name_tag.split("Baseline_ElasticNet_")[1]
+                cv_folder = "/scratch/l/lstein/ftaj//CV_Results/HyperOpt_DRP_ResponseOnly_" + data_types + "_Baseline_ElasticNet/"
+                dest = cv_folder + "/CV_Index_" + str(cur_cv_idx) + "_final_validation_results.csv"
             print("Saving epoch results to:", dest)
             all_results.to_csv(dest, float_format='%g')
         print("Finished validation for each fold! Took", time.time() - start_time, "seconds")
         exit(0)
 
-    if final_full_train is False:
+    if redo_interpretation is True:
+        print("Re-running interpretation!")
+        start_time = time.time()
+
+        name_tag = epoch_save_folder.split("CrossValidation/")[1]
+        if "FullModel" in name_tag:
+            tag = "FullModel"
+        else:
+            tag = "ResponseOnly"
+
+        cv_checkpoints = glob.glob(save_model_path + '/checkpoint_cv_*')
+
+        print("Found the following checkpoints:", cv_checkpoints)
+        if len(cv_checkpoints) == 0:
+            sys.exit("No checkpoints to interpret (for this config)")
+        for checkpoint in cv_checkpoints:
+            # Try to load checkpoint
+            cur_cv_idx = int(re.findall(r'\d+', checkpoint)[0])
+            if train_function != elasticnet_drp_train:
+                print("Loading checkpoint from:", save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".pt")
+                cur_checkpoint = torch.load(save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".pt")
+                # Copy the fold's model and data (to avoid cross-contamination of model and standardization parameters)
+                cur_fold_model = copy.deepcopy(cur_model)
+                cur_fold_model.load_state_dict(cur_checkpoint['model_state_dict'])
+
+                cur_epoch = cur_checkpoint['epoch']
+                print("Loaded checkpoint with CV:", cur_cv_idx, "and epoch:", cur_epoch)
+            else:
+                print("Loading checkpoint from:", save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".joblib")
+                cur_fold_model = load(save_model_path + "/checkpoint_cv_" + str(cur_cv_idx) + ".joblib")
+                cur_epoch = None
+
+            if "LMF" in name_tag:
+                print("Model uses LMF, turning to test mode...")
+                # The following ensures compatibility with IntegratedGradients
+                cur_fold_model.mode = "test"
+
+            if to_gpu is True:
+                cur_fold_model.cuda()
+
+            cur_fold_train_data = copy.deepcopy(train_data)
+            cur_fold = cv_folds[cur_cv_idx]
+
+            final_subset_indices = cur_fold[1]
+            if min_target is not None:
+                # Get all the validation indices and respective AAC scores for those samples
+                all_valid_aac = cur_fold_train_data.drug_data_targets
+                # Find indices that satisfy condition
+                subset_valid_aac = all_valid_aac >= min_target
+                cur_subset_indices = torch.flatten(subset_valid_aac.nonzero())
+                final_subset_indices = list(set(cur_subset_indices.int().tolist()) & set(final_subset_indices))
+                final_subset_indices = torch.Tensor(final_subset_indices)
+
+                # print("Subset indices for given minimum AAC target:", final_subset_indices)
+
+            if dr_sub_cpd_names is not None:
+                all_valid_drug_names = set(cur_fold_train_data.drug_names)
+                subset_valid_drug_names = all_valid_drug_names.intersection(dr_sub_cpd_names)
+                all_drug_names_np = np.array(cur_fold_train_data.drug_names, dtype=str)
+                all_subset_indices = []
+                for drug in subset_valid_drug_names:
+                    # print("Drug in loop:", drug)
+                    # cur_drug_indices = [i for i, x in enumerate(cur_fold_train_data.drug_names) if x == "drug"]
+                    cur_drug_indices = np.where(all_drug_names_np == drug)[0].tolist()
+                    all_subset_indices.append(cur_drug_indices)
+                # flatten list
+                all_subset_indices = [idx for subset in all_subset_indices for idx in subset]
+                # all_subset_indices = torch.flatten(torch.Tensor(all_subset_indices))
+                # find overlap with subset_indices
+                final_subset_indices = list(set(final_subset_indices.int().tolist()) & set(all_subset_indices))
+                final_subset_indices = torch.Tensor(final_subset_indices)
+                # print("Subset indices for given compound names:", final_subset_indices)
+                # subset_indices = np.intersect1d(subset_indices.cpu(), all_subset_indices)
+
+            final_subset_indices = final_subset_indices.int()
+            # print("Subset indices for given compound names:", final_subset_indices)
+
+            if len(final_subset_indices) == 0:
+                print("No matching samples in this fold, skipping...")
+                continue
+
+            cur_valid_sampler = SubsetRandomSampler(final_subset_indices)
+
+            if omic_standardize is True:
+                # Standardize training and validation data based on training data's statistics
+                cur_fold_train_data.standardize(train_idx=cur_fold[0])
+
+            if train_function == gnn_drp_train:
+                # Must define a custom forward function that takes GNNs and works with IntegratedGradients
+                def custom_forward(*inputs):
+                    # omic_data, graph_x, graph_edge_attr, graph_edge_index, omic_length):
+                    omic_length = inputs[-1]
+                    omic_data = inputs[0:omic_length]
+                    graph_x = inputs[-5]
+                    graph_edge_attr = inputs[-4]
+                    graph_edge_index = inputs[-3]
+                    batch = inputs[-2]
+
+                    return cur_fold_model([graph_x, graph_edge_index, graph_edge_attr, batch], omic_data)
+
+                cur_interpret_method = IntegratedGradients(custom_forward)
+
+            else:
+                raise NotImplementedError
+                # if interpret_method == "deeplift":
+                #     cur_interpret_method = DeepLift(cur_model, multiply_by_inputs=False)
+                # elif interpret_method == "deepliftshap":
+                #     cur_interpret_method = DeepLiftShap(cur_model, multiply_by_inputs=False)
+                # elif interpret_method == "integratedgradients":
+                #     cur_interpret_method = IntegratedGradients(cur_model, multiply_by_inputs=False)
+                # elif interpret_method == "ablation":
+                #     cur_interpret_method = FeatureAblation(cur_model)
+
+                # else:
+                #     Warning("Incorrect interpretation method selected, defaulting to IntegratedGradients")
+                #     cur_interpret_method = IntegratedGradients(cur_model, multiply_by_inputs=False)
+
+            # Must put PairData class into test mode to get correct results
+            cur_fold_train_data.mode = "test"
+            # load validation data
+            valid_loader = cur_data_loader(cur_fold_train_data, batch_size=1,
+                                           sampler=cur_valid_sampler, shuffle=False,
+                                           num_workers=0, pin_memory=False, drop_last=False)
+            print("Number of batches to process:", str(len(valid_loader)))
+
+            if train_function != elasticnet_drp_train:
+                data_types = epoch_save_folder.split("Drugs")[1][1:]
+                cv_folder = "/scratch/l/lstein/ftaj//CV_Results/" + \
+                            "HyperOpt_DRP_" + tag + '_' + data_types + '_' + name_tag
+                result_address = cv_folder + "/CV_Index_" + str(cur_cv_idx) + "_Epoch_" + \
+                             str(cur_epoch) + '_final_interpretation_results.csv'
+            else:
+                data_types = name_tag.split("Baseline_ElasticNet_")[1]
+                cv_folder = "/scratch/l/lstein/ftaj//CV_Results/HyperOpt_DRP_ResponseOnly_" + data_types + "_Baseline_ElasticNet/"
+                result_address = cv_folder + "/CV_Index_" + str(cur_cv_idx) + "_final_interpretation_results.csv"
+
+            data_types = data_types.split('_')
+            omic_types = data_types[1:]
+            all_interpret_results = []
+            fold_start_time = time.time()
+            for i, cur_samples in enumerate(valid_loader):
+
+                if train_function == gnn_drp_train:
+                    # PairData() output for GNN in test mode is not Batch(), so must reshape manually
+                    cur_samples[1][0] = torch.squeeze(cur_samples[1][0], 0)
+                    cur_samples[1][1] = torch.squeeze(cur_samples[1][1], 0)
+                    cur_samples[1][2] = torch.squeeze(cur_samples[1][2], 0)
+                    # Add batch
+                    cur_samples[1] += [torch.zeros(cur_samples[1][0].shape[0], dtype=int).cuda()]
+
+                    cur_output = cur_fold_model(cur_samples[1], cur_samples[2])
+                    # Do not use LDS during inference
+                    cur_loss = criterion(cur_output, cur_samples[3])
+                    cur_loss = cur_loss.tolist()
+                    # cur_loss = [loss[0] for loss in cur_loss]
+
+                    cur_targets = cur_samples[3].tolist()
+                    cur_targets = [target[0] for target in cur_targets]
+                    cur_preds = cur_output.tolist()
+                    # cur_preds = [pred[0] for pred in cur_preds]
+                else:
+                    cur_output = cur_fold_model(*cur_samples[1])
+                    # Do not use LDS during inference
+                    cur_loss = criterion(cur_output, cur_samples[2])
+                    cur_loss = cur_loss.tolist()
+                    cur_loss = [loss[0] for loss in cur_loss]
+
+                    cur_targets = cur_samples[2].tolist()
+                    cur_targets = [target[0] for target in cur_targets]
+                    cur_preds = cur_output.tolist()
+                    cur_preds = [pred[0] for pred in cur_preds]
+
+                omic_length = len(cur_samples[2])
+
+                zero_dl_attr_train, \
+                zero_dl_delta_train = cur_interpret_method.attribute(
+                    (*cur_samples[2], cur_samples[1][0], cur_samples[1][2]),
+                    additional_forward_args=(
+                        # cur_samples[1].x,
+                        # cur_samples[1].edge_attr,
+                        cur_samples[1][1],
+                        cur_samples[1][3],
+                        omic_length
+                        # cur_samples[1].smiles[0]
+                    ),
+                    internal_batch_size=1,
+                    return_convergence_delta=True)
+
+                cur_dict = {'cpd_name': cur_samples[0]['drug_name'],
+                            'cell_name': cur_samples[0]['cell_line_name'],
+                            'target': cur_targets,
+                            'predicted': cur_preds,
+                            'RMSE_loss': cur_loss,
+                            'interpret_delta': zero_dl_delta_train.tolist()
+                            }
+
+                # Recreate drug graph to use for interpretation
+                cur_graph = MyGNNData(x=cur_samples[1][0], edge_index=cur_samples[1][1],
+                                      edge_attr=cur_samples[1][2], smiles=cur_samples[0]['smiles'][0])
+                cur_graph = GenFeatures()(cur_graph)
+
+                # Create drug plotting directory if it doesn't exist
+                Path(cv_folder + "/drug_plots/").mkdir(parents=True, exist_ok=True)
+                # Plot positive and negative attributions on the drug molecule and save as a PNG plot
+                drug_interpret_viz(edge_attr=zero_dl_attr_train[-1], node_attr=zero_dl_attr_train[-2],
+                                   drug_graph=cur_graph, sample_info=cur_samples[0],
+                                   plot_address=cv_folder + "/drug_plots/")
+
+                for j in range(0, len(zero_dl_attr_train) - 2):  # ignore drug data (for now)
+                    cur_col_names = cur_fold_train_data.omic_column_names[j]
+                    for jj in range(len(cur_col_names)):
+                        cur_dict[omic_types[j] + '_' + cur_col_names[jj]] = zero_dl_attr_train[j][:, jj].tolist()
+
+                all_interpret_results.append(pd.DataFrame.from_dict(cur_dict))
+
+                if i % 100 == 0:
+                    print("Current batch:", i, ", elapsed:", str(time.time() - fold_start_time), "seconds")
+
+            results_df = pd.concat(all_interpret_results)
+
+            print("Saving epoch results to:", result_address)
+            results_df.to_csv(result_address, float_format='%g')
+            # fold_start_time = time.time()
+
+        print("Finished interpretation for each fold! Took", time.time() - start_time, "seconds")
+        exit(0)
+
+    if final_full_train is False or train_function == elasticnet_drp_train:
         return avg_train_losses, avg_valid_losses, avg_untrained_loss, max_final_epoch
 
     else:
@@ -1054,10 +1335,10 @@ def cross_validate(train_data, train_function, cv_folds, batch_size: int, cur_mo
 
                 print("Getting current epoch predictions...")
                 _, valid_losses, all_results = train_function(valid_loader=temp_loader,
-                                             cur_model=cur_fold_model, criterion=criterion,
-                                             optimizer=cur_fold_optimizer,
-                                             epoch=cur_epoch + 1, verbose=False,
-                                             return_results=True)
+                                                              cur_model=cur_fold_model, criterion=criterion,
+                                                              optimizer=cur_fold_optimizer,
+                                                              epoch=cur_epoch + 1, verbose=False,
+                                                              return_results=True)
                 dest = epoch_save_folder + "/TrainOnly" + "_Epoch_" + \
                        str(cur_epoch) + '_inference_results.csv'
                 print("Saving epoch results to:", dest)

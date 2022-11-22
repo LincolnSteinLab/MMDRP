@@ -11,6 +11,7 @@ import pandas as pd
 import torch
 from rdkit import Chem
 from scipy.ndimage import convolve1d
+from sklearn.feature_selection import f_regression, SelectKBest
 from torch.utils import data
 from sklearn.preprocessing import OneHotEncoder
 from torch_geometric.datasets.molecule_net import x_map, e_map
@@ -229,7 +230,7 @@ class GenFeatures(object):
 
 
 class MyGNNData(Data):
-    def __cat_dim__(self, key, item):
+    def __cat_dim__(self, key, item, *args):
         if key in ['omic_data', 'target', 'loss_weight']:
             return -1
         else:
@@ -362,7 +363,7 @@ class GnnDRCurveData(data.Dataset):
 
     def preprocess(self):
         self.full_train = self.all_data[[self.smiles_column, self.target_column]]
-        self.data_info = self.all_data[[self.key_column, self.class_column, self.cpd_name_column]]
+        self.data_info = self.all_data[[self.key_column, self.class_column, self.cpd_name_column, self.smiles_column]]
         self.drug_names = self.data_info[self.cpd_name_column]
 
         # Get the index of the DR column for better pandas indexing later on
@@ -470,7 +471,8 @@ class DRCurveData(data.Dataset):
     """
 
     def __init__(self, path: str, file_name: str, key_column: str = "ccl_name", morgan_column: str = "morgan",
-                 class_column: str = "primary_disease", target_column: str = "area_above_curve", transform: str = None,
+                 smiles_column: str = "cpd_smiles", class_column: str = "primary_disease",
+                 target_column: str = "area_above_curve", transform: str = None,
                  cpd_name_column: str = "cpd_name", random_morgan: bool = False, to_gpu: bool = False,
                  verbose: bool = False):
         self.file_name = file_name
@@ -480,14 +482,16 @@ class DRCurveData(data.Dataset):
         self.cpd_name_column = cpd_name_column
         self.class_column = class_column
         self.random_morgan = random_morgan
+        self.smiles_column = smiles_column
         if transform is not None:
             assert transform in ["log", "sqrt"], "Available DR transformation methods are log and sqrt"
         self.transform = transform
 
         # Read and subset the data
         all_data = pd.read_hdf(path + file_name, 'df')
-        self.all_data = all_data[[self.key_column, self.class_column, self.cpd_name_column, self.morgan_column,
-                                  self.target_column]]
+        self.all_data = all_data[
+            [self.key_column, self.class_column, self.cpd_name_column, self.smiles_column, self.morgan_column,
+             self.target_column]]
         # key_column = "ccl_name"
         # class_column = "primary_disease"
         # cpd_name_column = "cpd_name"
@@ -500,7 +504,7 @@ class DRCurveData(data.Dataset):
         self.all_data = all_data[all_data[morgan_column].notnull()]
 
         self.full_train = self.all_data[[morgan_column, target_column]]
-        self.data_info = self.all_data[[key_column, class_column, cpd_name_column]]
+        self.data_info = self.all_data[[key_column, class_column, cpd_name_column, self.smiles_column]]
         self.drug_names = self.data_info[cpd_name_column]
 
         print("Removed ", str(cur_len - len(self.full_train.index)), "NoneType values from data")
@@ -871,7 +875,7 @@ class PairData(data.Dataset):
 
             if self.mode in ['train', 'infer']:
                 # return cur_drug_feat, cur_data, self.drug_data_targets[idx], self.loss_weights[idx]
-            # elif self.mode == 'infer':
+                # elif self.mode == 'infer':
                 return {"cell_line_name": cur_cell,
                         "drug_name": self.drug_names[idx]}, \
                        cur_drug_feat, cur_data, self.drug_data_targets[idx], self.loss_weights[idx]
@@ -892,10 +896,51 @@ class PairData(data.Dataset):
             # RETURNS: {cell_line_name, drug name}, (encoder data), dose-response target (AAC)
             if self.mode in ['train', 'infer']:
                 # return torch.Tensor([0]), tuple(final_data), self.drug_data_targets[idx], self.loss_weights[idx]
-            # else:
+                # else:
                 return {"cell_line_name": cur_cell,
                         "drug_name": self.drug_names[idx]}, \
                        tuple(final_data), self.drug_data_targets[idx], self.loss_weights[idx]
+
+    def subset_cells(self, cell_lines: [str] = None):
+        if len(list(self.key_columns)) == 1:
+            # self.data_infos[i][self.key_columns[i]]
+            for i in range(1, len(self.data_list)):
+                self.data_list[i].all_data = self.data_list[1].all_data[self.data_list[1].all_data[self.key_columns[1]].isin(cell_lines)]
+        else:
+            for i in range(1, len(self.data_list)):
+                self.data_list[i].all_data = self.data_list[i].all_data[self.data_list[i].all_data[self.key_columns[i]].isin(cell_lines)]
+
+        # Now subset drugs based on remaining cells
+        remaining_cpds = self.data_list[self.drug_index].all_data[self.key_columns[self.drug_index]]
+        self.subset_cpds(cpd_names=remaining_cpds)
+
+    def subset_cpds(self, cpd_names: [str] = None, partial_match: bool = False):
+        assert self.drug_index is not None, "No drug data in this object, cannot subset by compound names"
+        print("Subsetting drug compounds to:", cpd_names)
+
+        if partial_match is False:
+            self.data_list[self.drug_index].all_data = self.data_list[self.drug_index].all_data[
+                self.data_list[self.drug_index].all_data[self.data_list[self.drug_index].cpd_name_column].isin(cpd_names)]
+        else:
+            self.data_list[self.drug_index].all_data = self.data_list[self.drug_index].all_data[
+                self.data_list[self.drug_index].all_data[self.data_list[self.drug_index].cpd_name_column].str.contains('|'.join(cpd_names)) is True]
+
+        self.data_list[self.drug_index].preprocess()
+        if self.data_list[self.drug_index].transformation is not None:
+            self.data_list[self.drug_index].transform()
+
+        self.data_list[self.drug_index].process()
+
+        # Now subset other omics data based on the remaining cell lines
+        remaining_cells = self.data_list[self.drug_index].all_data[self.key_columns[self.drug_index]]
+        self.subset_cells(cell_lines=remaining_cells)
+
+        # print("Number of cell lines in subset:", len(set(list(remaining_cells))))
+        # if len(list(self.key_columns)) == 1:
+        #     self.data_list = [panda[panda[self.key_columns]].isin(remaining_cells) for panda in self.data_list]
+        # else:
+        #     self.data_list = [panda[panda[self.key_columns[i]].isin(remaining_cells)] for panda, i in
+        #                       zip(self.data_list, range(len(self.key_columns)))]
 
     def subset(self, cell_lines: [str] = None, cpd_names: [str] = None, partial_match: bool = False,
                min_target: float = None, max_target: float = None, make_main: bool = False):
@@ -909,34 +954,48 @@ class PairData(data.Dataset):
         # Get data tensors from each data type object
 
         if cell_lines is not None:
-            exit("Cell line subsetting not yet implemented")
-            # for i in range(len(self.data_infos)):
-            # Only keep English alphabet characters from key names, convert to upper case
-            # self.data_infos[i][self.key_columns[i]] = self.data_infos[i][self.key_columns[i]].str.replace('\W+', '')
+            # exit("Cell line subsetting not yet implemented")
+            # assert self.drug_index is not None, "No drug data in this object, cannot subset by compound names"
+            print("Subsetting cell lines to:", cell_lines)
 
-            # Subset by more cell lines, similar to the bottleneck condition
+            # Assuming that drug data is in the front of the list!!!
             if len(list(self.key_columns)) == 1:
                 # self.data_infos[i][self.key_columns[i]]
-                self.data_list = [panda[panda[self.key_columns]].isin(cell_lines) for panda in self.data_list]
+                for i in range(1, len(self.data_list)):
+                    self.data_list[i].all_data = self.data_list[1].all_data[self.data_list[1].all_data[self.key_columns[1]].isin(cell_lines)]
             else:
-                self.data_list = [data_info[data_info[self.key_columns[i]].isin(cell_lines)] for data_info, i in
-                                  zip(self.data_infos, range(len(self.key_columns)))]
+                for i in range(1, len(self.data_list)):
+                    self.data_list[i].all_data = self.data_list[i].all_data[self.data_list[i].all_data[self.key_columns[i]].isin(cell_lines)]
+
+                # self.data_list[1:] = [data_info[data_info[self.key_columns[i]].isin(cell_lines)] for data_info, i in
+                #                   zip(self.data_infos[1:], range(1, len(self.key_columns)))]
+
+            # for i in range(1, len(self.data_list)):
+                # self.data_list[i].preprocess()
+                # if self.data_list[i].transformation is not None:
+                #     self.data_list[i].transform()
+                # self.data_list[i].standardize()
 
         if cpd_names is not None:
-            exit("Compound name subsetting not yet implemented")
+            # exit("Compound name subsetting not yet implemented")
             assert self.drug_index is not None, "No drug data in this object, cannot subset by compound names"
-            # Subset drug data first, then use the remaining cell lines to subset other omics data
-            # Note: Assuming that drug data is in the front of the list
-            if partial_match is False:
-                self.data_list[self.drug_index] = self.data_list[self.drug_index][
-                    self.data_list[self.drug_index][self.cpd_name_column].isin(cpd_names)]
-            else:
-                self.data_list[self.drug_index] = self.data_list[self.drug_index][
-                    self.data_list[self.drug_index][self.cpd_name_column].str.contains('|'.join(cpd_names)) is True]
+            print("Subsetting drug compounds to:", cpd_names)
 
+            if partial_match is False:
+                self.data_list[self.drug_index].all_data = self.data_list[self.drug_index].all_data[
+                    self.data_list[self.drug_index].all_data[self.data_list[self.drug_index].cpd_name_column].isin(cpd_names)]
+            else:
+                self.data_list[self.drug_index].all_data = self.data_list[self.drug_index].all_data[
+                    self.data_list[self.drug_index].all_data[self.data_list[self.drug_index].cpd_name_column].str.contains('|'.join(cpd_names)) is True]
+
+            self.data_list[self.drug_index].preprocess()
+            if self.data_list[self.drug_index].transformation is not None:
+                self.data_list[self.drug_index].transform()
+
+            self.data_list[self.drug_index].process()
             # Now subset other omics data based on the remaining cell lines
             remaining_cells = self.data_list[self.drug_index][self.key_columns[self.drug_index]]
-            print("Number of cell lines in subset:", len(set(list(remaining_cells))))
+            # print("Number of cell lines in subset:", len(set(list(remaining_cells))))
             if len(list(self.key_columns)) == 1:
                 self.data_list = [panda[panda[self.key_columns]].isin(remaining_cells) for panda in self.data_list]
             else:
@@ -948,7 +1007,9 @@ class PairData(data.Dataset):
             assert self.drug_index is not None, "No drug data in this object, cannot subset by target values"
             print("Subsetting AAC with minimum of", min_target)
             # Update the drug info attribute of data_list
-            self.data_list[self.drug_index].all_data = self.data_list[self.drug_index].all_data[self.data_list[self.drug_index].all_data[self.data_list[self.drug_index].target_column] >= min_target]
+            self.data_list[self.drug_index].all_data = self.data_list[self.drug_index].all_data[
+                self.data_list[self.drug_index].all_data[self.data_list[self.drug_index].target_column] >= min_target]
+
             self.data_list[self.drug_index].preprocess()
             if self.data_list[self.drug_index].transformation is not None:
                 self.data_list[self.drug_index].transform()
@@ -1004,19 +1065,19 @@ class PairData(data.Dataset):
         print("Changing internal data! Results achieved when reusing this new data may be different!")
         self.pair_data()
 
-            # if len(list(self.key_columns)) == 1:
-            #     pandas[self.drug_index] = pandas[self.drug_index][
-            #         pandas[self.drug_index].iloc[:, self.drug_dr_col_idx] <= max_target]
-            # else:
-            #     pandas[self.drug_index] = pandas[self.drug_index][
-            #         pandas[self.drug_index].iloc[:, self.drug_dr_col_idx] <= max_target]
-            # remaining_cells = pandas[self.drug_index][self.key_columns[self.drug_index]]
-            # print("Number of cell lines in subset:", len(set(list(remaining_cells))))
-            # if len(list(self.key_columns)) == 1:
-            #     pandas = [panda[panda[self.key_columns]].isin(remaining_cells) for panda in pandas]
-            # else:
-            #     pandas = [panda[panda[self.key_columns[i]].isin(remaining_cells)] for panda, i in
-            #               zip(pandas, range(len(self.key_columns)))]
+        # if len(list(self.key_columns)) == 1:
+        #     pandas[self.drug_index] = pandas[self.drug_index][
+        #         pandas[self.drug_index].iloc[:, self.drug_dr_col_idx] <= max_target]
+        # else:
+        #     pandas[self.drug_index] = pandas[self.drug_index][
+        #         pandas[self.drug_index].iloc[:, self.drug_dr_col_idx] <= max_target]
+        # remaining_cells = pandas[self.drug_index][self.key_columns[self.drug_index]]
+        # print("Number of cell lines in subset:", len(set(list(remaining_cells))))
+        # if len(list(self.key_columns)) == 1:
+        #     pandas = [panda[panda[self.key_columns]].isin(remaining_cells) for panda in pandas]
+        # else:
+        #     pandas = [panda[panda[self.key_columns[i]].isin(remaining_cells)] for panda, i in
+        #               zip(pandas, range(len(self.key_columns)))]
 
         # if make_main is True:
 
@@ -1112,6 +1173,53 @@ class PairData(data.Dataset):
         # scaling = len(weights) / np.sum(weights)
         # weights = [scaling * x for x in weights]
         # return weights
+
+    def feature_selection(self, train_idx, method=f_regression, k: int = 1000):
+        """
+        Select features using sklearn's SelectKBest, subsets omic (exp) data only
+        :param method: method to use, default: f_regression
+        :param k: number of features to select
+        :return: None
+        """
+        # Get data tensors from each data type object
+        all_data_tensors = [getattr(self.data_list[i], self.data_attribute_names[i]) for i in
+                            range(k, len(self.data_list))]
+        # Move all to CPU
+        all_data_tensors = [cur_tensor.cpu().numpy() for cur_tensor in all_data_tensors]
+
+        print("Using training data for feature selection")
+        # Get all training cells
+        all_train_cells = [self.drug_data_keys[idx] for idx in train_idx]
+        # Not the most efficient way of doing this...
+        for cur_dict in self.dicts:
+            for key, value in cur_dict.items():
+                cur_dict[key] = torch.tensor(cur_dict[key]).cpu().numpy()
+        all_train_targets = [self.drug_data_targets[idx].numpy() for idx in train_idx]
+        all_train_targets = np.array(all_train_targets)
+
+        all_feature_selectors = []
+        for cur_dict in self.dicts:
+            cur_train_omic_data = [cur_dict[cur_cell] for cur_cell in all_train_cells]
+            cur_train_omic_data = np.vstack(cur_train_omic_data)
+
+            # define feature selection
+            fs = SelectKBest(score_func=method, k=k)
+            # apply feature selection
+            fs.fit(cur_train_omic_data, all_train_targets)
+            all_feature_selectors.append(fs)
+
+        # Standardize (Z-score normalization)
+        all_shrunken_tensors = []
+        for cur_tensor, cur_fs in zip(all_data_tensors, all_feature_selectors):
+            all_shrunken_tensors.append(cur_fs.transform(cur_tensor))
+
+        # Now update internal class data
+        for i, j in zip(range(len(all_shrunken_tensors)), range(k, len(self.data_list))):
+            print("Shape of data number", i, ":", all_shrunken_tensors[i].shape)
+            setattr(self.data_list[j], self.data_attribute_names[j], torch.from_numpy(all_shrunken_tensors[i]))
+
+        # Pair original data
+        self.pair_data()
 
 
 class AutoEncoderPrefetcher():

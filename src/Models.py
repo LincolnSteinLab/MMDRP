@@ -369,6 +369,15 @@ class DrugResponsePredictor(nn.Module):
         if self.gnn_info[0] is False:
             encoder_outs = [self.encoders[i](inputs[i]) for i in
                             range(len(self.encoders))]
+            # for i in range(len(self.encoders)):
+            #     print("i in self.encoders:", i)
+            #     print("shape of inputs[i]:", inputs[i].shape)
+            #     print("cur encoder info:")
+            #     for name, param in self.encoders[i].named_parameters():
+            #         # if param.requires_grad:
+            #         print("Layer Name:", name, "\nLayer Shape:", param.data.shape)
+            #         self.encoders[i](inputs[i])
+
         else:
             # GNN input must be handled differently
             gnn_output = self.encoders[0](inputs[0].x, inputs[0].edge_index, inputs[0].edge_attr, inputs[0].batch)
@@ -518,6 +527,7 @@ class LMF(nn.Module):
                  act_fun_list=None,
                  batchnorm_list=None,
                  dropout_list=0.0,
+                 mode: str = "train",
                  *encoders):
         """
         Args:
@@ -534,6 +544,7 @@ class LMF(nn.Module):
         self.output_dim = output_dim
         self.rank = rank
         self.gnn_info = gnn_info
+        self.mode = mode
 
         if batchnorm_list is None or batchnorm_list is False:
             batchnorm_list = [False] * len(drp_layer_sizes)
@@ -579,9 +590,6 @@ class LMF(nn.Module):
         else:
             # GNN output size should be given in gnn_info, otherwise it's difficult to do a dry run
             # encoder_outputs = [
-                # encoder(torch.FloatTensor(2, encoder.input_size).to("cuda:0",
-                #                                                     non_blocking=True)) for
-                # encoder in self.encoders[1:]]
             encoder_outputs = [
                 encoder(torch.FloatTensor(2, encoder.input_size)) for
                 encoder in self.encoders[1:]]
@@ -662,7 +670,10 @@ class LMF(nn.Module):
                             range(len(self.encoders))]
         else:
             # GNN data input must be handled differently
-            gnn_output = self.encoders[0](inputs[0].x, inputs[0].edge_index, inputs[0].edge_attr, inputs[0].batch)
+            if self.mode == "test":
+                gnn_output = self.encoders[0](inputs[0][0], inputs[0][1], inputs[0][2], inputs[0][3])
+            else:
+                gnn_output = self.encoders[0](inputs[0].x, inputs[0].edge_index, inputs[0].edge_attr, inputs[0].batch)
             # gnn_output = self.encoders[0](inputs[0][0], inputs[0][1], inputs[0][2], inputs[0][3])
             # TODO Re-order manually until torch_geometric Dataloader solution is found
             # cur_omics = inputs[0].omic_data
@@ -671,7 +682,14 @@ class LMF(nn.Module):
             # correct_omics = []
             # for i in range(len_enc):
             #     correct_omics.append(torch.vstack([cur_omics[j][i] for j in range(len_batch)]))
-
+            # for i in range(1, len(self.encoders)):
+            #     print("i in self.encoders:", i)
+            #     print("shape of inputs[1][i-1]:", inputs[1][i - 1].shape)
+            #     print("cur encoder info:")
+            #     for name, param in self.encoders[i].named_parameters():
+            #         # if param.requires_grad:
+            #         print("Layer Name:", name, "\nLayer Shape:", param.data.shape)
+                    # self.encoders[i](inputs[1][i - 1])
             encoder_outs = [gnn_output] + [self.encoders[i](inputs[1][i - 1]) for i in
                                            range(1, len(self.encoders))]
 
@@ -949,6 +967,7 @@ class LMFTest(nn.Module):
         output = self.drp_module(fusion_output)
 
         return output
+
 
 class GraphEncoder(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels):

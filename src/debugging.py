@@ -8,12 +8,14 @@
 # from loss_functions import RMSLELoss, RMSELoss
 import torch
 from ray import tune
-from torch_geometric.data import DataLoader
+from torch_geometric.loader import DataLoader
 
 from CustomFunctions import MyLoggerCreator
 from DRPPreparation import drp_create_datasets, drp_load_datatypes
+from DataImportModules import PairData
 from TrainFunctions import cross_validate, gnn_drp_train
 from TuneTrainables import file_name_dict, DRPTrainable
+from drp_interpretation import TARGETED_DRUGS
 from loss_functions import RMSELoss
 
 data_dir = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/"
@@ -38,7 +40,7 @@ data_dict, _, key_columns, gpu_locs = drp_load_datatypes(
     # train_file="GDSC2_AAC_SMILES.txt",
     # train_file="CTRP_AAC_MORGAN_1024.hdf",
     # module_list=args.data_types,
-    module_list=["gnndrug", "exp"],
+    module_list=["gnndrug", "exp", "prot"],
     # module_list=["gnndrug"],
     PATH=data_dir,
     file_name_dict=file_name_dict,
@@ -56,21 +58,45 @@ data_list = list(data_dict.values())
 
 one_hot_drugs = True if 'OneHotDrugs' in experiment_name else False
 
+drug_index=0
+drug_dr_column: str = "area_above_curve"
+class_column_name: str = "primary_disease"
+gnn_mode = True
+mode='train'
+verbose=True
+train_attribute_name="data_infos"
+n_folds=5
+stratify=True
+subset_type="drug_scaffold"
+sample_column_name="cpd_name"
+class_data_index=drug_index
+seed=42
+train_data = PairData(data_list=data_list, key_columns=key_columns, key_attribute_names=["data_info"],
+                      drug_index=drug_index, drug_dr_column=drug_dr_column,
+                      one_hot_drugs=one_hot_drugs, gnn_mode=gnn_mode,
+                      mode=mode, to_gpu=to_gpu, verbose=verbose)
+# cv_folds = create_cv_folds(train_data=train_data, train_attribute_name="data_infos",
+#                            sample_column_name="cpd_name", n_folds=n_folds, class_data_index=drug_index,
+#                            subset_type="drug", stratify=stratify, class_column_name=class_column_name, seed=42,
+#                            verbose=False)
+
+
 cur_train_data, cur_cv_folds = drp_create_datasets(data_list=data_list,
                                                    key_columns=key_columns,
                                                    n_folds=5,
                                                    drug_index=0,
                                                    drug_dr_column="area_above_curve",
                                                    class_column_name="primary_disease",
-                                                   subset_type="both",
+                                                   subset_type="lineage",
                                                    test_drug_data=None,
                                                    # infer_mode=False,
                                                    mode='train',
                                                    gnn_mode=True,
+                                                   # dr_sub_cpd_names=TARGETED_DRUGS,
                                                    one_hot_drugs=one_hot_drugs,
                                                    to_gpu=to_gpu,
                                                    # lds=True,
-                                                   # dr_sub_min_target=args.min_dr_target,
+                                                   # dr_sub_min_target=0.7,
                                                    # dr_sub_max_target=args.max_dr_target,
                                                    verbose=True)
 
@@ -131,7 +157,7 @@ cur_model = cur_model.float()
 
 test_loader = DataLoader(cur_train_data,
                          # batch_size=int(args.sample_size),
-                         batch_size=32,
+                         batch_size=10,
                          shuffle=False,
                          num_workers=0, pin_memory=False, drop_last=True)
 temp = enumerate(test_loader)

@@ -31,6 +31,8 @@ from TuneTrainables import FullModelTrainable, DRPTrainable, file_name_dict
 
 import pandas as pd
 
+from drp_interpretation import TARGETED_DRUGS
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 pd.options.mode.chained_assignment = None  # default='warn'
 # torch.autograd.set_detect_anomaly(True)
@@ -80,6 +82,11 @@ mirna_param_ranges = {
     "mirna_code_layer_size": tune.randint(2 ** 6, 2 ** 9),
     "mirna_num_layers": tune.randint(2, 3)
 }
+metab_param_ranges = {
+    "metab_first_layer_size": tune.randint(2 ** 5, 2 ** 8),
+    "metab_code_layer_size": tune.randint(2 ** 4, 2 ** 7),
+    "metab_num_layers": tune.randint(2, 3)
+}
 hist_param_ranges = {
     "hist_first_layer_size": tune.randint(2 ** 3, 2 ** 5),
     "hist_code_layer_size": tune.randint(2 ** 6, 2 ** 9),
@@ -90,13 +97,8 @@ rppa_param_ranges = {
     "rppa_code_layer_size": tune.randint(2 ** 4, 2 ** 7),
     "rppa_num_layers": tune.randint(2, 3)
 }
-metab_param_ranges = {
-    "metab_first_layer_size": tune.randint(2 ** 5, 2 ** 8),
-    "metab_code_layer_size": tune.randint(2 ** 4, 2 ** 7),
-    "metab_num_layers": tune.randint(2, 3)
-}
 
-data_types = ['drug', 'mut', 'cnv', 'exp', 'prot', 'mirna', 'hist', 'rppa', 'metab']
+data_types = ['drug', 'mut', 'cnv', 'exp', 'prot', 'mirna', 'metab', 'hist', 'rppa']
 code_layer_size_names = [data_type + '_code_layer_size' for data_type in data_types] + ['gnn_out_channels']
 
 lmf_param_ranges = {
@@ -322,6 +324,7 @@ def train_full_model(args, config):
     :param args:
     :return:
     """
+
     max_epochs = int(args.max_num_epochs)
 
     local_dir = "/scratch/l/lstein/ftaj/"
@@ -336,6 +339,17 @@ def train_full_model(args, config):
     if not os.path.isdir(result_dir):
         os.mkdir(result_dir)
     print("Result directory is:", result_dir)
+
+    # Save config to CSV
+    print("Saving config csv to:", result_dir + '/config.csv')
+    with open(result_dir + '/config.csv', 'w') as csv_file:
+        writer = csv.writer(csv_file)
+        for key, value in config.items():
+            writer.writerow([key, value])
+
+    print("Saving config json to:", result_dir + '/best_config.json')
+    with open(result_dir + '/best_config.json', 'w') as fp:
+        json.dump(config, fp)
 
     # Must create a logger that points to a writable directory
     # if bool(int(args.cross_validate)) is True:
@@ -354,6 +368,7 @@ def train_full_model(args, config):
                                              merge_method=args.merge_method,
                                              loss_type=args.loss_type,
                                              one_hot_drugs=bool(int(args.one_hot_drugs)),
+                                             gnn_drug=True if 'gnndrug' in args.data_types else False,
                                              transform=args.transform,
                                              min_dr_target=args.min_dr_target,
                                              max_dr_target=args.max_dr_target,
@@ -397,15 +412,18 @@ def train_full_model(args, config):
 
     name_tag = args.name_tag
     if args.baseline_only:
-        assert '_'.join(args.data_types) == "drug_exp",\
-            "Baseline model only available for drug and exp data types"
+        # assert '_'.join(args.data_types) == "drug_exp",\
+        #     "Baseline model only available for drug and exp data types"
         del cur_model
         del criterion
 
-        cur_model = SGDRegressor(penalty='elasticnet')
+        cur_model = SGDRegressor(loss="squared_error", penalty='elasticnet',
+                                 learning_rate='adaptive', eta0=0.00001,
+                                 average=False,
+                                 fit_intercept=False, random_state=42)
         criterion = None
         cur_train_function = elasticnet_drp_train
-        name_tag = "Baseline_ElasticNet"
+        name_tag = "Baseline_ElasticNet_Split_" + args.cv_subset_type.upper() + "_" + '_'.join(args.data_types)
     else:
         cur_train_function = gnn_drp_train if 'gnndrug' in args.data_types else drp_train
 
@@ -415,34 +433,46 @@ def train_full_model(args, config):
 
     # Perform cross validation using the model with the given config
     start_time = time.time()
-    final_model, \
-    avg_train_losses, \
-    avg_valid_losses, \
-    avg_untrained_losses, \
-    max_final_epoch = cross_validate(train_data=cur_train_data,
-                                     train_function=cur_train_function,
-                                     cv_folds=cur_cv_folds,
-                                     batch_size=config['batch_size'],
-                                     cur_model=cur_model,
-                                     criterion=criterion,
-                                     max_epochs=max_epochs,
-                                     patience=10,
-                                     train_only=args.train_only,
-                                     final_full_train=args.final_train,
-                                     learning_rate=config['lr'],
-                                     delta=0.001,
-                                     NUM_WORKERS=0,
-                                     theoretical_loss=False,
-                                     omic_standardize=args.omic_standardize,
-                                     save_epoch_results=False,
-                                     redo_validation=args.redo_validation,
-                                     epoch_save_folder=epoch_save_folder,
-                                     save_model=False if args.baseline_only else True,
-                                     save_model_frequency=5,
-                                     save_model_path=epoch_save_folder,
-                                     resume=args.resume,
-                                     to_gpu=False if args.baseline_only else True,
-                                     verbose=True)
+
+    cv_results = cross_validate(train_data=cur_train_data,
+                                train_function=cur_train_function,
+                                cv_folds=cur_cv_folds,
+                                batch_size=config['batch_size'],
+                                cur_model=cur_model,
+                                criterion=criterion,
+                                max_epochs=max_epochs,
+                                patience=10,
+                                train_only=args.train_only,
+                                final_full_train=args.final_train,
+                                learning_rate=config['lr'],
+                                delta=0.001,
+                                NUM_WORKERS=0,
+                                theoretical_loss=False,
+                                omic_standardize=args.omic_standardize,
+                                save_epoch_results=False,
+                                redo_validation=args.redo_validation,
+                                redo_interpretation=args.redo_interpretation,
+                                dr_sub_cpd_names=TARGETED_DRUGS if args.targeted_drugs_only else None,
+                                min_target=args.interpret_min_aac,
+                                epoch_save_folder=epoch_save_folder,
+                                save_model=True,
+                                save_model_frequency=5,
+                                save_model_path=epoch_save_folder,
+                                resume=args.resume,
+                                to_gpu=False if args.baseline_only else True,
+                                verbose=True)
+
+    if args.final_train is True:
+        final_model = cv_results[0]
+        avg_train_losses = cv_results[1]
+        avg_valid_losses = cv_results[2]
+        avg_untrained_losses = cv_results[3]
+        max_final_epoch = cv_results[4]
+    else:
+        avg_train_losses = cv_results[0]
+        avg_valid_losses = cv_results[1]
+        avg_untrained_losses = cv_results[2]
+        max_final_epoch = cv_results[3]
 
     duration = time.time() - start_time
 
@@ -471,20 +501,10 @@ def train_full_model(args, config):
             for key, value in results.items():
                 writer.writerow([key, value])
 
-    # Save config to CSV
-    print("Saving config csv to:", result_dir + '/config.csv')
-    with open(result_dir + '/config.csv', 'w') as csv_file:
-        writer = csv.writer(csv_file)
-        for key, value in config.items():
-            writer.writerow([key, value])
-
-    print("Saving config json to:", result_dir + '/best_config.json')
-    with open(result_dir + '/best_config.json', 'w') as fp:
-        json.dump(config, fp)
-
-    # Save the whole model
-    print("Saving the final model to:", result_dir + "/final_model.pt")
-    torch.save(final_model, result_dir + "/final_model.pt")
+    if args.final_train is True:
+        # Save the whole model
+        print("Saving the final model to:", result_dir + "/final_model.pt")
+        torch.save(final_model, result_dir + "/final_model.pt")
 
 
 def hypopt(num_samples: int = 10, gpus_per_trial: float = 1.0, cpus_per_trial: float = 6.0):
@@ -536,12 +556,12 @@ def hypopt(num_samples: int = 10, gpus_per_trial: float = 1.0, cpus_per_trial: f
             config = {**config, **prot_param_ranges}
         if "mirna" in args.data_types:
             config = {**config, **mirna_param_ranges}
+        if "metab" in args.data_types:
+            config = {**config, **metab_param_ranges}
         if "hist" in args.data_types:
             config = {**config, **hist_param_ranges}
         if "rppa" in args.data_types:
             config = {**config, **rppa_param_ranges}
-        if "metab" in args.data_types:
-            config = {**config, **metab_param_ranges}
 
     # Check if a global code layer size should be used
     if args.merge_method == 'sum':
@@ -583,6 +603,7 @@ def hypopt(num_samples: int = 10, gpus_per_trial: float = 1.0, cpus_per_trial: f
                                              train_file=args.train_file,
                                              data_types='_'.join(args.data_types),
                                              bottleneck=bool(int(args.bottleneck)),
+                                             pretrain=bool(int(args.pretrain)),
                                              n_folds=int(args.n_folds),
                                              max_epochs=int(args.max_num_epochs),
                                              encoder_train=args.encoder_freeze,
@@ -595,6 +616,8 @@ def hypopt(num_samples: int = 10, gpus_per_trial: float = 1.0, cpus_per_trial: f
                                              transform=args.transform,
                                              min_dr_target=args.min_dr_target,
                                              max_dr_target=args.max_dr_target,
+                                             gnn_drug=("gnndrug" in args.data_types),
+                                             omic_standardize=args.omic_standardize,
                                              name_tag=args.name_tag
                                              )
         # cur_trainable = tune.with_parameters(FullModelTrainable,
@@ -648,26 +671,47 @@ def hypopt(num_samples: int = 10, gpus_per_trial: float = 1.0, cpus_per_trial: f
     # else:
     #     resume = False
     #     Warning("Invalid --resume arg, defaulting to False")
-
-    result = tune.run(
-        # partial(train_auto_encoder, checkpoint_dir="/.mounts/labs/steinlab/scratch/ftaj/", data_dir=data_dir),
-        cur_trainable,
-        name=checkpoint_dir,
-        verbose=1,
-        resume=args.resume if not args.errored_only else "ERRORED_ONLY",
-        resources_per_trial={"cpu": cpus_per_trial, "gpu": gpus_per_trial},  # "memory": 8 * 10 ** 9},
-        config=config,
-        num_samples=num_samples,
-        scheduler=scheduler,
-        search_alg=search_algo,
-        progress_reporter=reporter,
-        metric='avg_cv_valid_loss',
-        mode='min',
-        keep_checkpoints_num=1,
-        stop={"training_iteration": 1},
-        checkpoint_at_end=True,
-        # checkpoint_score_attr="min-loss",
-        reuse_actors=True, local_dir=local_dir)
+    try:
+        result = tune.run(
+            # partial(train_auto_encoder, checkpoint_dir="/.mounts/labs/steinlab/scratch/ftaj/", data_dir=data_dir),
+            cur_trainable,
+            name=checkpoint_dir,
+            verbose=1,
+            resume=args.resume if not args.errored_only else "ERRORED_ONLY",
+            resources_per_trial={"cpu": cpus_per_trial, "gpu": gpus_per_trial},  # "memory": 8 * 10 ** 9},
+            config=config,
+            num_samples=num_samples,
+            scheduler=scheduler,
+            search_alg=search_algo,
+            progress_reporter=reporter,
+            metric='avg_cv_valid_loss',
+            mode='min',
+            keep_checkpoints_num=1,
+            stop={"training_iteration": 1},
+            checkpoint_at_end=True,
+            # checkpoint_score_attr="min-loss",
+            reuse_actors=True, local_dir=local_dir)
+    except ValueError:
+        print("No checkpoint exists despite call for resume; starting from scratch!")
+        result = tune.run(
+            # partial(train_auto_encoder, checkpoint_dir="/.mounts/labs/steinlab/scratch/ftaj/", data_dir=data_dir),
+            cur_trainable,
+            name=checkpoint_dir,
+            verbose=1,
+            resume=False,
+            resources_per_trial={"cpu": cpus_per_trial, "gpu": gpus_per_trial},  # "memory": 8 * 10 ** 9},
+            config=config,
+            num_samples=num_samples,
+            scheduler=scheduler,
+            search_alg=search_algo,
+            progress_reporter=reporter,
+            metric='avg_cv_valid_loss',
+            mode='min',
+            keep_checkpoints_num=1,
+            stop={"training_iteration": 1},
+            checkpoint_at_end=True,
+            # checkpoint_score_attr="min-loss",
+            reuse_actors=True, local_dir=local_dir)
 
     # result = tune.run(
     #     # partial(train_auto_encoder, checkpoint_dir="/.mounts/labs/steinlab/scratch/ftaj/", data_dir=data_dir),
@@ -778,6 +822,13 @@ if __name__ == "__main__":
     parser.add_argument("--redo_validation",
                         help="Whether to generate validation results using each CV model checkpoint",
                         action='store_true')
+    parser.add_argument("--redo_interpretation",
+                        help="Whether to generate interpretation results using each CV model checkpoint",
+                        action='store_true')
+    parser.add_argument('--interpret_min_aac', help='Maximum dose-response AAC value for interpretation only',
+                        type=float, default=None)
+    parser.add_argument('--targeted_drugs_only',
+                        help="Whether to subset to only targeted drugs for interpretation", action="store_true")
     parser.add_argument("--baseline_only",
                         help="Only run CV using ElasticNet (only available for drug + exp)",
                         action='store_true')
@@ -798,6 +849,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    print("Given arguments are:\n", args)
     # if args.train_file is not None:
     #     assert os.path.isfile(
     #         "Data/DRP_Training_Data/" + args.train_file), "Given train file could not be found in main directory"
@@ -826,34 +878,44 @@ if __name__ == "__main__":
 
         # Only use configs attained from hyper-param optimzation on the CTRPv2 dataset
         name_tag = args.name_tag
+        import re
         if "GDSC1" in name_tag or "GDSC2" in name_tag:
-            import re
-
             print("Changing config source from GDSC1/2 to CTRP")
             name_tag = re.sub("GDSC[1,2]", "CTRP", name_tag)
-        # Ignore configs from cell line or drug only splitting, only use "BOTH"
-        if "Split_CELL_LINE" in name_tag or "Split_DRUG" in name_tag:
-            import re
 
-            print("Changing split type from cell_line/drug to both")
-            name_tag = re.sub(r'Split_CELL_LINE', "Split_BOTH", name_tag)
+        if "WithBottleNeck" in args.name_tag and "Split_DRUG" in name_tag:
             name_tag = re.sub(r'Split_DRUG', "Split_BOTH", name_tag)
+
+        # Ignore configs from cell line or drug only splitting, only use "BOTH"
+        elif ("Split_BOTH" in name_tag and "WithBottleNeck" not in args.name_tag):
+            print("Changing split type from both to cell_line")
+            name_tag = re.sub(r'Split_BOTH', "Split_CELL_LINE", name_tag)
+        elif "Split_DRUG" in name_tag:
+            print("Changing split type from drug to cell_line")
+            name_tag = re.sub(r'Split_DRUG', "Split_CELL_LINE", name_tag)
 
         file_address = PATH + "HyperOpt_DRP_" + tag + '_' + "_".join(
             args.data_types) + '_' + name_tag + '/best_config.json'
         print("Best config file should be at:", file_address)
 
-        try:
-            with open(file_address, 'r') as fp:
-                best_config = json.load(fp)
-            print("Found best config:", best_config)
-            # analysis = Analysis(experiment_dir=PATH + "HyperOpt_DRP_" + tag + '_' + "_".join(args.data_types) + '_' + args.name_tag + "/",
-            #                     default_metric="avg_cv_valid_loss", default_mode="min")
-            # best_config = analysis.get_best_config()
-        except:
-            exit("Could not get best config from ray tune trial logdir")
+        if not args.baseline_only:
+            try:
+                with open(file_address, 'r') as fp:
+                    best_config = json.load(fp)
+                print("Found best config:", best_config)
+                # analysis = Analysis(experiment_dir=PATH + "HyperOpt_DRP_" + tag + '_' + "_".join(args.data_types) + '_' + args.name_tag + "/",
+                #                     default_metric="avg_cv_valid_loss", default_mode="min")
+                # best_config = analysis.get_best_config()
+            except:
+                exit("Could not get best config from ray tune trial logdir")
 
-        train_full_model(args, best_config)
+            train_full_model(args, best_config)
+
+        else:
+            best_config = {"drp_first_layer_size": 870, "drp_last_layer_size": 29, "drp_num_layers": 3, "lr": 1e-05,
+                           "batch_size": 1024}
+            train_full_model(args, best_config)
+
         exit()
 
     if bool(int(args.optimize)) is True:

@@ -2,12 +2,15 @@ import sys
 import random
 
 import pandas
-from sklearn.model_selection import StratifiedKFold, KFold
+import pandas as pd
+from sklearn.model_selection import StratifiedKFold, KFold, StratifiedGroupKFold
 from itertools import cycle, islice
 import numpy as np
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
 from typing import Tuple, Dict, List, Union
+# from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
+# from skmultilearn.model_selection import IterativeStratification
 # import networkx as nx
 # from scipy.sparse.csgraph import maximum_bipartite_matching
 # from scipy.sparse import csr_matrix
@@ -20,10 +23,118 @@ from ModuleLoader import ExtractEncoder
 from file_names import file_name_dict
 
 
+def create_scaffolds(df, entity):
+    """create scaffold split. it first generates molecular scaffold for each molecule and then split based on scaffolds
+	reference: https://github.com/chemprop/chemprop/blob/master/chemprop/data/scaffold.py
+	TDC Reference: https://github.com/mims-harvard/TDC/blob/589a97c81acff79816b47bc8667b372324d9b563/tdc/utils/split.py
+
+	Args:
+	    df (pd.DataFrame): dataset dataframe
+	    fold_seed (int): the random seed
+	    frac (list): a list of train/valid/test fractions
+        entity (str): the column name for where molecule is stored
+
+	Returns:
+	    dict: a dictionary of splitted dataframes, where keys are train/valid/test and values correspond to each dataframe
+	"""
+
+    try:
+        from rdkit import Chem
+        from rdkit.Chem.Scaffolds import MurckoScaffold
+        from rdkit import RDLogger
+        RDLogger.DisableLog('rdApp.*')
+    except:
+        raise ImportError("Please install rdkit by 'conda install -c conda-forge rdkit'! ")
+    from tqdm import tqdm
+    # from random import Random
+
+    from collections import defaultdict
+    # random = Random(seed)
+
+    s = df[entity].unique()
+    # s = all_data['cpd_smiles'].unique()
+    cpd_scaffold_dict = {}
+
+    # scaffolds = defaultdict(set)
+    # idx2mol = dict(zip(list(range(len(s))), s))
+
+    error_smiles = 0
+    for i, smiles in tqdm(enumerate(s), total=len(s)):
+        try:
+            scaffold = MurckoScaffold.MurckoScaffoldSmiles(mol=Chem.MolFromSmiles(smiles), includeChirality=False)
+            cpd_scaffold_dict[smiles] = scaffold
+        except:
+            print(smiles + ' returns RDKit error and is thus omitted...')
+            error_smiles += 1
+
+    cpd_scaffold_df = pd.DataFrame.from_dict(cpd_scaffold_dict, orient="index", columns=["scaffold"])
+
+    final_data = df.merge(cpd_scaffold_df, left_on=entity, right_index=True)
+    return final_data
+
+    # all_groups = list(set(df[entity]))
+    # all_groups = scaffold
+    # all_folds_group_idx = []
+    # for train_idx, val_idx in kfold.split(X=all_groups):
+    #     all_folds_group_idx.append((train_idx, val_idx))
+    #
+    # # Get indices of group lines in each fold
+    # all_folds = []
+    # for i_fold in range(len(all_folds_group_idx)):
+    #     cur_train_groups = [all_groups[i] for i in all_folds_group_idx[i_fold][0]]
+    #     cur_valid_groups = [all_groups[i] for i in all_folds_group_idx[i_fold][1]]
+    #     all_folds.append((class_data.index[class_data[sample_column_name].isin(cur_train_groups)].to_numpy(),
+    #                       class_data.index[class_data[sample_column_name].isin(cur_valid_groups)].to_numpy()))
+    #
+    # train, val, test = [], [], []
+    # train_size = int((len(df) - error_smiles) * frac[0])
+    # val_size = int((len(df) - error_smiles) * frac[1])
+    # test_size = (len(df) - error_smiles) - train_size - val_size
+    # train_scaffold_count, val_scaffold_count, test_scaffold_count = 0, 0, 0
+    #
+    # # index_sets = sorted(list(scaffolds.values()), key=lambda i: len(i), reverse=True)
+    # index_sets = list(scaffolds.values())
+    # big_index_sets = []
+    # small_index_sets = []
+    # for index_set in index_sets:
+    #     if len(index_set) > val_size / 2 or len(index_set) > test_size / 2:
+    #         big_index_sets.append(index_set)
+    #     else:
+    #         small_index_sets.append(index_set)
+    # random.seed(seed)
+    # random.shuffle(big_index_sets)
+    # random.shuffle(small_index_sets)
+    # index_sets = big_index_sets + small_index_sets
+    #
+    # if frac[2] == 0:
+    #     for index_set in index_sets:
+    #         if len(train) + len(index_set) <= train_size:
+    #             train += index_set
+    #             train_scaffold_count += 1
+    #         else:
+    #             val += index_set
+    #             val_scaffold_count += 1
+    # else:
+    #     for index_set in index_sets:
+    #         if len(train) + len(index_set) <= train_size:
+    #             train += index_set
+    #             train_scaffold_count += 1
+    #         elif len(val) + len(index_set) <= val_size:
+    #             val += index_set
+    #             val_scaffold_count += 1
+    #         else:
+    #             test += index_set
+    #             test_scaffold_count += 1
+    #
+    # return {'train': df.iloc[train].reset_index(drop=True),
+    #         'valid': df.iloc[val].reset_index(drop=True),
+    #         'test': df.iloc[test].reset_index(drop=True)}
+
+
 def create_cv_folds(train_data, train_attribute_name: str, sample_column_name: str = None, n_folds: int = 10,
                     class_data_index: int = None, class_column_name: str = "primary_disease", subset_type: str = None,
                     stratify: bool = True,
-                    seed: int = 42, verbose: bool = False) -> []:
+                    seed: int = 42, verbose: bool = True) -> []:
     """
     Creates indices for cross validation, with the options to divide data by cell lines, drugs or both, ensuring that
     they are not shared between the training and validation data, and that each datapoint is used a maximum of once as
@@ -32,7 +143,10 @@ def create_cv_folds(train_data, train_attribute_name: str, sample_column_name: s
     :return: list of tuples of np.arrays in (train_indices, valid_indices) format
     """
 
-    assert subset_type in ["cell_line", "drug", "both", None], "subset_type should be one of: cell_line, drug or both"
+    assert subset_type in ["cell_line", "drug", "drug_scaffold", "lineage", "both",
+                           None], "subset_type should be one of: cell_line, drug[_scaffold] or both"
+    if verbose:
+        print("Subsetting by:", subset_type)
     np.random.seed(seed)
 
     if class_data_index is None:
@@ -79,6 +193,33 @@ def create_cv_folds(train_data, train_attribute_name: str, sample_column_name: s
                 cur_valid_groups = [all_groups[i] for i in all_folds_group_idx[i_fold][1]]
                 all_folds.append((class_data.index[class_data[sample_column_name].isin(cur_train_groups)].to_numpy(),
                                   class_data.index[class_data[sample_column_name].isin(cur_valid_groups)].to_numpy()))
+
+        elif subset_type == "drug_scaffold":
+            raise NotImplementedError
+            class_data = create_scaffolds(df=class_data, entity='cpd_smiles')
+            all_scaffolds = list(set(class_data['scaffold']))
+            sgkf = StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+            # sgkf.split(X=all_scaffolds)
+
+            all_folds = []
+            for train_idx, val_idx in sgkf.split(X=class_data, y=class_data['primary_disease'],
+                                                 groups=class_data['scaffold']):
+                all_folds.append((train_idx, val_idx))
+
+        elif subset_type == "lineage":
+            all_groups = list(set(class_data[class_column_name]))
+            all_folds_group_idx = []
+            for train_idx, val_idx in kfold.split(X=all_groups):
+                all_folds_group_idx.append((train_idx, val_idx))
+
+            # Get indices of_group lines in each fold
+            all_folds = []
+            for i_fold in range(len(all_folds_group_idx)):
+                cur_train_groups = [all_groups[i] for i in all_folds_group_idx[i_fold][0]]
+                cur_valid_groups = [all_groups[i] for i in all_folds_group_idx[i_fold][1]]
+                all_folds.append((class_data.index[class_data[class_column_name].isin(cur_train_groups)].to_numpy(),
+                                  class_data.index[class_data[class_column_name].isin(cur_valid_groups)].to_numpy()))
+
         else:
             match_dict = cell_drug_match(class_data)
             # Divide drugs into n_folds baskets
@@ -176,99 +317,142 @@ def create_cv_folds(train_data, train_attribute_name: str, sample_column_name: s
             if verbose:
                 print(
                     "Strictly splitting training/validation data based on cell lines while maintaining class distributions")
+            # class_data = create_scaffolds(df=class_data, entity='cpd_smiles')
+            # all_scaffolds = list(set(class_data['scaffold']))
+            sgkf = StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+            # sgkf.split(X=all_scaffolds)
 
-            # Remove lineages that have less than n_folds cell lines, as these would result in data leakage
-            class_cell_count = class_data[[class_column_name, sample_column_name]].drop_duplicates().groupby(
-                [class_column_name]).agg({sample_column_name: "count"})
-            valid_classes = class_cell_count[class_cell_count[sample_column_name] >= n_folds].index.tolist()
-            # invalid_classes = class_cell_count[class_cell_count[sample_column_name] < n_folds].index.tolist()
-            # class_data.index[class_data[class_column_name].isin(invalid_classes)].to_numpy()
+            all_folds = []
+            for train_idx, val_idx in sgkf.split(X=class_data, y=class_data['primary_disease'],
+                                                 groups=class_data[sample_column_name]):
+                all_folds.append((train_idx, val_idx))
 
-            cur_class_data = class_data[class_data[class_column_name].isin(valid_classes)]
-
+            # # Remove lineages that have less than n_folds cell lines, as these would result in data leakage
+            # class_cell_count = class_data[[class_column_name, sample_column_name]].drop_duplicates().groupby(
+            #     [class_column_name]).agg({sample_column_name: "count"})
+            # valid_classes = class_cell_count[class_cell_count[sample_column_name] >= n_folds].index.tolist()
+            # # invalid_classes = class_cell_count[class_cell_count[sample_column_name] < n_folds].index.tolist()
+            # # class_data.index[class_data[class_column_name].isin(invalid_classes)].to_numpy()
+            #
+            # cur_class_data = class_data[class_data[class_column_name].isin(valid_classes)]
+            #
+            # if verbose:
+            #     print("Must remove lineages that have less cell lines than the number of folds!",
+            #           "\nRemoved", class_data.shape[0] - cur_class_data.shape[0], "datapoints",
+            #           "\nRemaining datapoints:", cur_class_data.shape[0])
+            #
+            # # Subset (fully remove) an equal set of cell lines from each class
+            # all_class_cell_cycles = []
+            # num_cells_per_fold = []
+            # for cur_class in valid_classes:
+            #     # Get current class cell lines, sample with the number of folds, and separate from train
+            #     cur_class_cells = list(
+            #         set(list(cur_class_data[cur_class_data[class_column_name] == cur_class][sample_column_name])))
+            #     cur_class_cells.sort(key=str.lower)
+            #     num_cells_in_fold = int(np.floor(len(cur_class_cells) / n_folds))
+            #     cur_class_cells = cycle(cur_class_cells)
+            #     all_class_cell_cycles.append(cur_class_cells)
+            #     num_cells_per_fold.append(num_cells_in_fold)
+            #
+            # for i_fold in range(n_folds):
+            #     # For each fold, get cells from each cycle (cycle has a memory)
+            #     cur_validation_cells = []
+            #     for cyc, num_cells in zip(all_class_cell_cycles, num_cells_per_fold):
+            #         cur_validation_cells.append(list(islice(cyc, num_cells)))
+            #     # Flatten the list
+            #     cur_validation_cells = [cur_cell for cur_cells in cur_validation_cells for cur_cell in cur_cells]
+            #
+            #     # Determine indices of validation and training sets using validation cell lines (and valid lineages)
+            #     all_folds[i_fold] = (class_data.index[~(class_data[sample_column_name].isin(cur_validation_cells)) &
+            #                                           class_data[class_column_name].isin(valid_classes)].to_numpy(),
+            #                          class_data.index[
+            #                              class_data[sample_column_name].isin(cur_validation_cells)].to_numpy())
             if verbose:
-                print("Must remove lineages that have less cell lines than the number of folds!",
-                      "\nRemoved", class_data.shape[0] - cur_class_data.shape[0], "datapoints",
-                      "\nRemaining datapoints:", cur_class_data.shape[0])
-
-            # Subset (fully remove) an equal set of cell lines from each class
-            all_class_cell_cycles = []
-            num_cells_per_fold = []
-            for cur_class in valid_classes:
-                # Get current class cell lines, sample with the number of folds, and separate from train
-                cur_class_cells = list(
-                    set(list(cur_class_data[cur_class_data[class_column_name] == cur_class][sample_column_name])))
-                cur_class_cells.sort(key=str.lower)
-                num_cells_in_fold = int(np.floor(len(cur_class_cells) / n_folds))
-                cur_class_cells = cycle(cur_class_cells)
-                all_class_cell_cycles.append(cur_class_cells)
-                num_cells_per_fold.append(num_cells_in_fold)
-
-            for i_fold in range(n_folds):
-                # For each fold, get cells from each cycle (cycle has a memory)
-                cur_validation_cells = []
-                for cyc, num_cells in zip(all_class_cell_cycles, num_cells_per_fold):
-                    cur_validation_cells.append(list(islice(cyc, num_cells)))
-                # Flatten the list
-                cur_validation_cells = [cur_cell for cur_cells in cur_validation_cells for cur_cell in cur_cells]
-
-                # Determine indices of validation and training sets using validation cell lines (and valid lineages)
-                all_folds[i_fold] = (class_data.index[~(class_data[sample_column_name].isin(cur_validation_cells)) &
-                                                      class_data[class_column_name].isin(valid_classes)].to_numpy(),
-                                     class_data.index[
-                                         class_data[sample_column_name].isin(cur_validation_cells)].to_numpy())
-                if verbose:
+                for i_fold in range(n_folds):
                     print("Train fold:", all_folds[i_fold][0], ", Length:", len(all_folds[i_fold][0]),
                           "\nValid fold:", all_folds[i_fold][1], ", Length:", len(all_folds[i_fold][1]),
                           "\nTotal datapoints:", len(all_folds[i_fold][0]) + len(all_folds[i_fold][1]),
-                          "\nValidation/Training Ratio:", len(all_folds[i_fold][1]) / len(all_folds[i_fold][0]),
+                          "\nValidation/All Ratio:",
+                          len(all_folds[i_fold][1]) / (len(all_folds[i_fold][0]) + len(all_folds[i_fold][1])),
                           "\nTarget Ratio:", 1 / n_folds)
 
         elif subset_type == 'drug':
             # TODO: Remove classes that have insufficient samples based on the number of folds
             if verbose:
                 print(
-                    "Strictly splitting training/validation data based on drugs while maintaining class distributions")
+                    "Strictly splitting training/validation data based on drug scaffolds while maintaining class distributions")
+
+            class_data = create_scaffolds(df=class_data, entity='cpd_smiles')
+            # all_scaffolds = list(set(class_data['scaffold']))
+            sgkf = StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+            # sgkf.split(X=all_scaffolds)
+
+            all_folds = []
+            for train_idx, val_idx in sgkf.split(X=class_data, y=class_data[class_column_name],
+                                                 groups=class_data['scaffold']):
+                all_folds.append((train_idx, val_idx))
 
             # Subset (fully remove) an equal set of drugs from each class
-            # cur_class = all_classes[0]
-            all_class_drug_cycles = []
-            num_drugs_per_fold = []
-            for cur_class in all_classes:
-                # Get current class cell lines, sample with the number of folds, and separate from train
-                cur_class_drugs = list(
-                    set(list(class_data[class_data[class_column_name] == cur_class][sample_column_name])))
-                cur_class_drugs.sort(key=str.lower)
-                num_drugs_in_fold = int(np.ceil(len(cur_class_drugs) / n_folds))
-                cur_class_drugs = cycle(cur_class_drugs)
-                all_class_drug_cycles.append(cur_class_drugs)
-                num_drugs_per_fold.append(num_drugs_in_fold)
-
-            for i_fold in range(n_folds):
-                # For each fold, get cells from each cycle
-                cur_validation_drugs = []
-                for cyc, num_drugs in zip(all_class_drug_cycles, num_drugs_per_fold):
-                    cur_validation_drugs.append(list(islice(cyc, num_drugs)))
-                # Flatten the list
-                cur_validation_drugs = [cur_drug for cur_drugs in cur_validation_drugs for cur_drug in cur_drugs]
-
-                # Separate validation cell lines from training cells
-                before_train_len = len(all_folds[i_fold][0])
-                before_valid_len = len(all_folds[i_fold][1])
-                # Determine indices of validation and training sets
-                all_folds[i_fold] = (
-                    class_data.index[~class_data[sample_column_name].isin(cur_validation_drugs)].to_numpy(),
-                    class_data.index[class_data[sample_column_name].isin(cur_validation_drugs)].to_numpy())
-                if verbose:
-                    print("Train data length before:", before_train_len, ", after:", len(all_folds[i_fold][0]),
-                          ", Validation data length before:", before_valid_len, ", after:", len(all_folds[i_fold][1]))
-                    print("Train fold:", all_folds[i_fold][0])
-                    print("Valid fold:", all_folds[i_fold][1])
+            # all_class_drug_cycles = []
+            # num_drugs_per_fold = []
+            # for cur_class in all_classes:
+            #     # Get current class cell lines, sample with the number of folds, and separate from train
+            #     cur_class_drugs = list(
+            #         set(list(class_data[class_data[class_column_name] == cur_class][sample_column_name])))
+            #     cur_class_drugs.sort(key=str.lower)
+            #     num_drugs_in_fold = int(np.ceil(len(cur_class_drugs) / n_folds))
+            #     cur_class_drugs = cycle(cur_class_drugs)
+            #     all_class_drug_cycles.append(cur_class_drugs)
+            #     num_drugs_per_fold.append(num_drugs_in_fold)
+            #
+            # for i_fold in range(n_folds):
+            #     # For each fold, get cells from each cycle
+            #     cur_validation_drugs = []
+            #     for cyc, num_drugs in zip(all_class_drug_cycles, num_drugs_per_fold):
+            #         cur_validation_drugs.append(list(islice(cyc, num_drugs)))
+            #     # Flatten the list
+            #     cur_validation_drugs = [cur_drug for cur_drugs in cur_validation_drugs for cur_drug in cur_drugs]
+            #
+            #     # Separate validation cell lines from training cells
+            #     before_train_len = len(all_folds[i_fold][0])
+            #     before_valid_len = len(all_folds[i_fold][1])
+            #     # Determine indices of validation and training sets
+            #     all_folds[i_fold] = (
+            #         class_data.index[~class_data[sample_column_name].isin(cur_validation_drugs)].to_numpy(),
+            #         class_data.index[class_data[sample_column_name].isin(cur_validation_drugs)].to_numpy())
+            if verbose:
+                for i_fold in range(n_folds):
+                    print("Train fold:", all_folds[i_fold][0], ", Length:", len(all_folds[i_fold][0]),
+                          "\nValid fold:", all_folds[i_fold][1], ", Length:", len(all_folds[i_fold][1]),
+                          "\nTotal datapoints:", len(all_folds[i_fold][0]) + len(all_folds[i_fold][1]),
+                          "\nValidation/All Ratio:",
+                          len(all_folds[i_fold][1]) / (len(all_folds[i_fold][0]) + len(all_folds[i_fold][1])),
+                          "\nTarget Ratio:", 1 / n_folds)
 
         if subset_type == "both":
             if verbose:
                 print(
                     "Strictly splitting training/validation data based on both cell lines and drugs while maintaining class distributions")
+
+            # MultiLabelStratifedKFold (not what we want...)
+            # mlskf = MultilabelStratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+            # from sklearn import preprocessing
+            # mlb = preprocessing.MultiLabelBinarizer()
+            # all_data_label_tuples = list(zip(class_data['primary_disease'],
+            #          class_data['scaffold'],
+            #          class_data['ccl_name']))
+            # all_data_binarized = mlb.fit_transform(all_data_label_tuples)
+            # all_folds = []
+            # for train_idx, val_idx in mlskf.split(X=class_data[['cpd_name', 'ccl_name']],
+            #                                       y=all_data_binarized):
+            #     all_folds.append((train_idx, val_idx))
+
+            # StratifiedGroupKFold with LabelSets of ccl_name and cpd_name (doesn't work...)
+            # sgkf = StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+            # all_folds = []
+            # for train_idx, val_idx in sgkf.split(X=class_data, y=class_data['primary_disease'],
+            #                                      groups=class_data['ccl_name'] + class_data['cpd_name']):
+            #     all_folds.append((train_idx, val_idx))
 
             # Remove lineages that have less than n_folds cell lines, as these would result in data leakage
             class_cell_count = class_data[[class_column_name, 'ccl_name']].drop_duplicates().groupby(
@@ -364,43 +548,55 @@ def create_cv_folds(train_data, train_attribute_name: str, sample_column_name: s
                                                       class_data[class_column_name].isin(valid_classes)].to_numpy(),
                                      class_data.index[class_data['ccl_name'].isin(cur_validation_cells) &
                                                       class_data['cpd_name'].isin(cur_validation_drugs)].to_numpy())
-
-                if verbose:
+            if verbose:
+                for i_fold in range(n_folds):
                     print("Train fold:", all_folds[i_fold][0], ", Length:", len(all_folds[i_fold][0]),
                           "\nValid fold:", all_folds[i_fold][1], ", Length:", len(all_folds[i_fold][1]),
                           "\nTotal datapoints:", len(all_folds[i_fold][0]) + len(all_folds[i_fold][1]),
-                          "\nValidation/Training Ratio:", len(all_folds[i_fold][1]) / len(all_folds[i_fold][0]),
+                          "\nValidation/Training Ratio:",
+                          len(all_folds[i_fold][1]) / (len(all_folds[i_fold][0]) + len(all_folds[i_fold][1])),
                           "\nTarget Ratio:", 1 / n_folds)
             if verbose:
                 ratio_sum = 0
                 for i_fold in range(n_folds):
                     ratio_sum += (len(all_folds[i_fold][1]) / len(all_folds[i_fold][0]))
                 print("\nSum Target Ratio:", ratio_sum)
-    if verbose:
+
+    if True:  # Only change this if overlap checking is not important...
         # Measure overlap among folds. Ideally, validation folds should be exclusive and there shouldn't be any overlap
         # between training and validation sets of the same fold setup
         all_valid_folds = [fold[1] for fold in all_folds]
-        for i_fold in range(len(all_valid_folds) - 1):
-            for j in range(i_fold + 1, len(all_valid_folds)):
-                print(i_fold, j)
-                cur_intsec = set.intersection(set(all_valid_folds[i_fold]), set(all_valid_folds[j]))
-                print("Length of current validation set overlap:", len(cur_intsec))
-
-        if subset_type != "both":
-            # Test for sample_column_name overlap
+        if verbose:
             for i_fold in range(len(all_valid_folds) - 1):
                 for j in range(i_fold + 1, len(all_valid_folds)):
                     print(i_fold, j)
-                    i_set = set(class_data[sample_column_name].iloc[all_valid_folds[i_fold]])
-                    j_set = set(class_data[sample_column_name].iloc[all_valid_folds[j]])
-                    cur_intsec = set.intersection(i_set, j_set)
+                    cur_intsec = set.intersection(set(all_valid_folds[i_fold]), set(all_valid_folds[j]))
                     print("Length of current validation set overlap:", len(cur_intsec))
+                    if len(cur_intsec) > 0:
+                        Warning("Validation folds share data points!")
+
+        if subset_type != "both":
+            if subset_type == "lineage":
+                sample_column_name = class_column_name
+                if verbose:
+                    print("Sample column is class column/subset type is lineage")
+            # Test for sample_column_name overlap
+            if verbose:
+                for i_fold in range(len(all_valid_folds) - 1):
+                    for j in range(i_fold + 1, len(all_valid_folds)):
+                        print(i_fold, j)
+                        i_set = set(class_data[sample_column_name].iloc[all_valid_folds[i_fold]])
+                        j_set = set(class_data[sample_column_name].iloc[all_valid_folds[j]])
+                        cur_intsec = set.intersection(i_set, j_set)
+                        print("Length of current validation set overlap:", len(cur_intsec))
             # Test training and validation overlap
             for i_fold in range(n_folds):
                 train_set = set(class_data[sample_column_name].iloc[all_folds[i_fold][0]])
                 valid_set = set(class_data[sample_column_name].iloc[all_folds[i_fold][1]])
                 cur_intsec = set.intersection(train_set, valid_set)
-                print("Training-Validation intersection:", cur_intsec)
+                if verbose:
+                    print("Training-Validation intersection in fold", i_fold, ":", cur_intsec)
+                assert len(cur_intsec) == 0, "Data leakage between training and validation sets detected"
 
         else:
             all_valid_folds = [fold[1] for fold in all_folds]
@@ -408,30 +604,36 @@ def create_cv_folds(train_data, train_attribute_name: str, sample_column_name: s
             # Check for overlap between cell lines in all validation sets
             for i_fold in range(len(all_valid_folds) - 1):
                 for j in range(i_fold + 1, len(all_valid_folds)):
-                    print(i_fold, j)
                     i_set = set(class_data['ccl_name'].iloc[all_valid_folds[i_fold]])
                     j_set = set(class_data['ccl_name'].iloc[all_valid_folds[j]])
                     cur_intsec = set.intersection(i_set, j_set)
-                    print("Length of cell line validation set overlap:", len(cur_intsec))
+                    if verbose:
+                        print(i_fold, j)
+                        print("Length of cell line validation set overlap:", len(cur_intsec))
             for i_fold in range(len(all_valid_folds) - 1):
                 for j in range(i_fold + 1, len(all_valid_folds)):
-                    print(i_fold, j)
                     i_set = set(class_data['cpd_name'].iloc[all_valid_folds[i_fold]])
                     j_set = set(class_data['cpd_name'].iloc[all_valid_folds[j]])
                     cur_intsec = set.intersection(i_set, j_set)
-                    print("Length of drug validation set overlap:", len(cur_intsec))
+                    if verbose:
+                        print(i_fold, j)
+                        print("Length of drug validation set overlap:", len(cur_intsec))
 
             # Test training and validation overlap
             for i_fold in range(n_folds):
                 train_set = set(class_data['cpd_name'].iloc[all_folds[i_fold][0]])
                 valid_set = set(class_data['cpd_name'].iloc[all_folds[i_fold][1]])
                 cur_intsec = set.intersection(train_set, valid_set)
-                print("Training-Validation drug intersection:", cur_intsec)
+                if verbose:
+                    print("Training-Validation drug intersection:", cur_intsec)
+                assert len(cur_intsec) == 0, "Data leakage between drug training and validation sets detected"
 
                 train_set = set(class_data['ccl_name'].iloc[all_folds[i_fold][0]])
                 valid_set = set(class_data['ccl_name'].iloc[all_folds[i_fold][1]])
                 cur_intsec = set.intersection(train_set, valid_set)
-                print("Training-Validation cell line intersection:", cur_intsec)
+                if verbose:
+                    print("Training-Validation cell line intersection:", cur_intsec)
+                assert len(cur_intsec) == 0, "Data leakage between cell line training and validation sets detected"
 
     return all_folds
 
@@ -470,13 +672,13 @@ def change_ae_input_size(ae, input_size, name):
         cur_act_fun_list = ae.encoder.act_fun
 
     cur_ae = DNNAutoEncoder(input_dim=input_size,
-            first_layer_size=cur_first_layer_size,
-            code_layer_size=cur_code_layer_size,
-            num_layers=cur_num_layers,
-            act_fun_list=cur_act_fun_list,
-            batchnorm_list=cur_batchnorm_list,
-            dropout_list=cur_dropout_list,
-            name=name)
+                            first_layer_size=cur_first_layer_size,
+                            code_layer_size=cur_code_layer_size,
+                            num_layers=cur_num_layers,
+                            act_fun_list=cur_act_fun_list,
+                            batchnorm_list=cur_batchnorm_list,
+                            dropout_list=cur_dropout_list,
+                            name=name)
 
     return cur_ae
 
@@ -544,8 +746,8 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
         if verbose:
             print("Drug data width:", cur_data.width())
         if load_autoencoders:
-                autoencoder_list.append(torch.load(PATH + file_name_dict[str(cur_data.width()) + "_drug_embed_file_name"],
-                                                   map_location=torch.device('cpu')))
+            autoencoder_list.append(torch.load(PATH + file_name_dict[str(cur_data.width()) + "_drug_embed_file_name"],
+                                               map_location=torch.device('cpu')))
         key_columns.append("ccl_name")
         if device == "multi_gpu":
             gpu_locs.append(0)
@@ -559,13 +761,14 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
     if "gnndrug" in module_list:
         if verbose:
             print("Loading dose-response data...")
-        cur_data = GnnDRCurveData(path=PATH, file_name=train_file, key_column="ccl_name", class_column="primary_disease",
-                               target_column="area_above_curve", to_gpu=to_gpu, random_morgan=random_morgan,
-                               transform=transform, gnn_pre_transform=GenFeatures())
+        cur_data = GnnDRCurveData(path=PATH, file_name=train_file, key_column="ccl_name",
+                                  class_column="primary_disease",
+                                  target_column="area_above_curve", to_gpu=to_gpu, random_morgan=random_morgan,
+                                  transform=transform, gnn_pre_transform=GenFeatures())
 
         data_dict['gnndrug'] = cur_data
         if load_autoencoders:
-                autoencoder_list.append(None)
+            autoencoder_list.append(None)
 
         key_columns.append("ccl_name")
         if device == "multi_gpu":
@@ -577,14 +780,15 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "mut" in module_list:
         if verbose:
-            print("Loading mutational data from", file_name_dict[train_dataset+"_mut_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_mut_file_name"], to_gpu=to_gpu)
+            print("Loading mutational data from", file_name_dict[train_dataset + "_mut_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset + "_mut_file_name"], to_gpu=to_gpu)
         data_dict['mut'] = cur_data
         if verbose:
             print("Mut data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict[global_code_tag + "mut_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[global_code_tag + "mut_embed_file_name"],
+                           map_location=torch.device('cpu')))
             if verbose:
                 print("Loaded auto-encoder from:", PATH + file_name_dict[global_code_tag + "mut_embed_file_name"])
 
@@ -598,16 +802,18 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "cnv" in module_list:
         if verbose:
-            print("Loading copy number variation data from", file_name_dict[train_dataset+"_cnv_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_cnv_file_name"], to_gpu=to_gpu)
+            print("Loading copy number variation data from", file_name_dict[train_dataset + "_cnv_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset + "_cnv_file_name"], to_gpu=to_gpu)
         data_dict['cnv'] = cur_data
         if verbose:
             print("CNV data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict[pretrain + global_code_tag + "cnv_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[pretrain + global_code_tag + "cnv_embed_file_name"],
+                           map_location=torch.device('cpu')))
             if verbose:
-                print("Loaded auto-encoder from:", PATH + file_name_dict[pretrain + global_code_tag + "cnv_embed_file_name"])
+                print("Loaded auto-encoder from:",
+                      PATH + file_name_dict[pretrain + global_code_tag + "cnv_embed_file_name"])
         key_columns.append("stripped_cell_line_name")
         if device == "multi_gpu":
             gpu_locs.append(0)
@@ -618,16 +824,18 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "exp" in module_list:
         if verbose:
-            print("Loading gene expression data from", file_name_dict[train_dataset+"_exp_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_exp_file_name"], to_gpu=to_gpu)
+            print("Loading gene expression data from", file_name_dict[train_dataset + "_exp_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset + "_exp_file_name"], to_gpu=to_gpu)
         data_dict['exp'] = cur_data
         if verbose:
             print("Exp data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict[pretrain + global_code_tag + "exp_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[pretrain + global_code_tag + "exp_embed_file_name"],
+                           map_location=torch.device('cpu')))
             if verbose:
-                print("Loaded auto-encoder from:", PATH + file_name_dict[pretrain + global_code_tag + "exp_embed_file_name"])
+                print("Loaded auto-encoder from:",
+                      PATH + file_name_dict[pretrain + global_code_tag + "exp_embed_file_name"])
 
         key_columns.append("stripped_cell_line_name")
         if device == "multi_gpu":
@@ -639,8 +847,8 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "prot" in module_list:
         if verbose:
-            print("Loading protein quantity data from", file_name_dict[train_dataset+"_prot_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_prot_file_name"], to_gpu=to_gpu)
+            print("Loading protein quantity data from", file_name_dict[train_dataset + "_prot_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset + "_prot_file_name"], to_gpu=to_gpu)
         data_dict['prot'] = cur_data
         if verbose:
             print("Prot data width:", cur_data.width())
@@ -659,32 +867,15 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "mirna" in module_list:
         if verbose:
-            print("Loading miRNA data from", file_name_dict[train_dataset+"_mirna_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_mirna_file_name"], to_gpu=to_gpu)
+            print("Loading miRNA data from", file_name_dict[train_dataset + "_mirna_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset + "_mirna_file_name"], to_gpu=to_gpu)
         data_dict['mirna'] = cur_data
         if verbose:
             print("miRNA data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict[global_code_tag + "mirna_embed_file_name"], map_location=torch.device('cpu')))
-        key_columns.append("stripped_cell_line_name")
-        if device == "multi_gpu":
-            gpu_locs.append(0)
-        elif device == "cpu":
-            gpu_locs.append(None)
-        else:
-            gpu_locs.append(0)
-
-    if "hist" in module_list:
-        if verbose:
-            print("Loading Histone Profiling data from", file_name_dict[train_dataset+"_hist_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_hist_file_name"], to_gpu=to_gpu)
-        data_dict['hist'] = cur_data
-        if verbose:
-            print("miRNA data width:", cur_data.width())
-        if load_autoencoders:
-            autoencoder_list.append(
-                torch.load(PATH + file_name_dict[global_code_tag + "hist_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[global_code_tag + "mirna_embed_file_name"],
+                           map_location=torch.device('cpu')))
         key_columns.append("stripped_cell_line_name")
         if device == "multi_gpu":
             gpu_locs.append(0)
@@ -695,14 +886,15 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "rppa" in module_list:
         if verbose:
-            print("Loading RPPA data from", file_name_dict[train_dataset+"_rppa_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_rppa_file_name"], to_gpu=to_gpu)
+            print("Loading RPPA data from", file_name_dict[train_dataset + "_rppa_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset + "_rppa_file_name"], to_gpu=to_gpu)
         data_dict['rppa'] = cur_data
         if verbose:
             print("RPPA data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict[global_code_tag + "rppa_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[global_code_tag + "rppa_embed_file_name"],
+                           map_location=torch.device('cpu')))
         key_columns.append("stripped_cell_line_name")
         if device == "multi_gpu":
             gpu_locs.append(0)
@@ -713,14 +905,15 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
 
     if "metab" in module_list:
         if verbose:
-            print("Loading Metabolomics Profiling data from", file_name_dict[train_dataset+"_metab_file_name"])
-        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset+"_metab_file_name"], to_gpu=to_gpu)
+            print("Loading Metabolomics Profiling data from", file_name_dict[train_dataset + "_metab_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset + "_metab_file_name"], to_gpu=to_gpu)
         data_dict['metab'] = cur_data
         if verbose:
             print("Metabolomics data width:", cur_data.width())
         if load_autoencoders:
             autoencoder_list.append(
-                torch.load(PATH + file_name_dict[global_code_tag + "metab_embed_file_name"], map_location=torch.device('cpu')))
+                torch.load(PATH + file_name_dict[global_code_tag + "metab_embed_file_name"],
+                           map_location=torch.device('cpu')))
         key_columns.append("stripped_cell_line_name")
         if device == "multi_gpu":
             gpu_locs.append(0)
@@ -729,6 +922,26 @@ def drp_load_datatypes(train_file: str, module_list: [str], PATH: str, file_name
         else:
             gpu_locs.append(0)
 
+    if "hist" in module_list:
+        if verbose:
+            print("Loading Histone Profiling data from", file_name_dict[train_dataset + "_hist_file_name"])
+        cur_data = OmicData(path=PATH, omic_file_name=file_name_dict[train_dataset + "_hist_file_name"], to_gpu=to_gpu)
+        data_dict['hist'] = cur_data
+        if verbose:
+            print("miRNA data width:", cur_data.width())
+        if load_autoencoders:
+            autoencoder_list.append(
+                torch.load(PATH + file_name_dict[global_code_tag + "hist_embed_file_name"],
+                           map_location=torch.device('cpu')))
+        key_columns.append("stripped_cell_line_name")
+        if device == "multi_gpu":
+            gpu_locs.append(0)
+        elif device == "cpu":
+            gpu_locs.append(None)
+        else:
+            gpu_locs.append(0)
+
+
     return data_dict, autoencoder_list, key_columns, gpu_locs
 
 
@@ -736,7 +949,9 @@ def drp_create_datasets(data_list: List, key_columns, n_folds: int = 10,
                         drug_index: int = 0, drug_dr_column: str = "area_above_curve",
                         class_column_name: str = "primary_disease", subset_type: str = None, stratify: bool = True,
                         test_drug_data=None, one_hot_drugs: bool = False,
-                        dr_sub_max_target: float = None, dr_sub_min_target: float = None, lds: bool = False,
+                        dr_sub_max_target: float = None, dr_sub_min_target: float = None,
+                        dr_sub_cpd_names: [str] = None, dr_sub_cell_names: [str] = None,
+                        lds: bool = False,
                         bottleneck_keys: [str] = None, mode: str = 'train', to_gpu: bool = False,
                         gnn_mode: bool = False,
                         verbose: bool = False) -> Tuple[PairData, list]:
@@ -778,6 +993,9 @@ def drp_create_datasets(data_list: List, key_columns, n_folds: int = 10,
                               one_hot_drugs=one_hot_drugs, gnn_mode=gnn_mode,
                               mode=mode, to_gpu=to_gpu, verbose=verbose)
 
+    if dr_sub_cpd_names is not None or dr_sub_cell_names is not None:
+        train_data.subset(cpd_names=dr_sub_cpd_names, cell_lines=dr_sub_cell_names)
+
     # Subset training data based on DR target values
     if dr_sub_max_target is not None or dr_sub_min_target is not None:
         train_data.subset(min_target=dr_sub_min_target, max_target=dr_sub_max_target)
@@ -797,19 +1015,30 @@ def drp_create_datasets(data_list: List, key_columns, n_folds: int = 10,
                                    sample_column_name="ccl_name", n_folds=n_folds, class_data_index=drug_index,
                                    subset_type="cell_line", stratify=stratify, class_column_name=class_column_name,
                                    seed=42,
-                                   verbose=False)
+                                   verbose=verbose)
     elif subset_type == "drug":
         cv_folds = create_cv_folds(train_data=train_data, train_attribute_name="data_infos",
                                    sample_column_name="cpd_name", n_folds=n_folds, class_data_index=drug_index,
                                    subset_type="drug", stratify=stratify, class_column_name=class_column_name, seed=42,
-                                   verbose=False)
+                                   verbose=verbose)
+    elif subset_type == "drug_scaffold":
+        cv_folds = create_cv_folds(train_data=train_data, train_attribute_name="data_infos",
+                                   sample_column_name="cpd_name", n_folds=n_folds, class_data_index=drug_index,
+                                   subset_type="drug", stratify=stratify, class_column_name=class_column_name, seed=42,
+                                   verbose=verbose)
+    elif subset_type == "lineage":
+        cv_folds = create_cv_folds(train_data=train_data, train_attribute_name="data_infos",
+                                   n_folds=n_folds, class_data_index=drug_index,
+                                   subset_type="lineage", stratify=False, class_column_name=class_column_name,
+                                   seed=42,
+                                   verbose=verbose)
     else:
         # Sample column name is ignored
         cv_folds = create_cv_folds(train_data=train_data, train_attribute_name="data_infos",
                                    n_folds=n_folds, class_data_index=drug_index,
                                    subset_type="both", stratify=stratify, class_column_name=class_column_name,
                                    seed=42,
-                                   verbose=False)
+                                   verbose=verbose)
 
     # num_train = len(train_data)
     # indices = list(range(num_train))

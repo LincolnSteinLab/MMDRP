@@ -49,7 +49,8 @@ def initialize_autoencoders(cur_modules: [str], cur_config: Dict, merge_method: 
         drug_model = DNNAutoEncoder(input_dim=drug_width,
                                     first_layer_size=cur_config['morgan_first_layer_size'],
                                     code_layer_size=cur_config[
-                                        'morgan_code_layer_size'] if merge_method == 'concat' else
+                                        'morgan_code_layer_size'] if (
+                                                merge_method == 'concat' or merge_method == 'lmf') else
                                     cur_config['global_code_size'],
                                     num_layers=cur_config['morgan_num_layers'],
                                     act_fun_list='prelu',
@@ -61,7 +62,8 @@ def initialize_autoencoders(cur_modules: [str], cur_config: Dict, merge_method: 
     if 'mut' in cur_modules:
         mut_model = DNNAutoEncoder(input_dim=mut_width,
                                    first_layer_size=cur_config['mut_first_layer_size'],
-                                   code_layer_size=cur_config['mut_code_layer_size'] if merge_method == 'concat' else
+                                   code_layer_size=cur_config['mut_code_layer_size'] if (
+                                               merge_method == 'concat' or merge_method == 'lmf') else
                                    cur_config['global_code_size'],
                                    num_layers=cur_config['mut_num_layers'],
                                    act_fun_list='prelu',
@@ -72,7 +74,8 @@ def initialize_autoencoders(cur_modules: [str], cur_config: Dict, merge_method: 
     if 'cnv' in cur_modules:
         cnv_model = DNNAutoEncoder(input_dim=cnv_width,
                                    first_layer_size=cur_config['cnv_first_layer_size'],
-                                   code_layer_size=cur_config['cnv_code_layer_size'] if merge_method == 'concat' else
+                                   code_layer_size=cur_config['cnv_code_layer_size'] if (
+                                               merge_method == 'concat' or merge_method == 'lmf') else
                                    cur_config['global_code_size'],
                                    num_layers=cur_config['cnv_num_layers'],
                                    act_fun_list='prelu',
@@ -83,7 +86,8 @@ def initialize_autoencoders(cur_modules: [str], cur_config: Dict, merge_method: 
     if 'exp' in cur_modules:
         exp_model = DNNAutoEncoder(input_dim=exp_width,
                                    first_layer_size=cur_config['exp_first_layer_size'],
-                                   code_layer_size=cur_config['exp_code_layer_size'] if merge_method == 'concat' else
+                                   code_layer_size=cur_config['exp_code_layer_size'] if (
+                                               merge_method == 'concat' or merge_method == 'lmf') else
                                    cur_config['global_code_size'],
                                    num_layers=cur_config['exp_num_layers'],
                                    act_fun_list='prelu',
@@ -94,7 +98,8 @@ def initialize_autoencoders(cur_modules: [str], cur_config: Dict, merge_method: 
     if 'prot' in cur_modules:
         prot_model = DNNAutoEncoder(input_dim=prot_width,
                                     first_layer_size=cur_config['prot_first_layer_size'],
-                                    code_layer_size=cur_config['prot_code_layer_size'] if merge_method == 'concat' else
+                                    code_layer_size=cur_config['prot_code_layer_size'] if (
+                                                merge_method == 'concat' or merge_method == 'lmf') else
                                     cur_config['global_code_size'],
                                     num_layers=cur_config['prot_num_layers'],
                                     # Linear activation ensures that negative numbers can be predicted
@@ -108,7 +113,8 @@ def initialize_autoencoders(cur_modules: [str], cur_config: Dict, merge_method: 
         mirna_model = DNNAutoEncoder(input_dim=mirna_width,
                                      first_layer_size=cur_config['mirna_first_layer_size'],
                                      code_layer_size=cur_config[
-                                         'mirna_code_layer_size'] if merge_method == 'concat' else
+                                         'mirna_code_layer_size'] if (
+                                                 merge_method == 'concat' or merge_method == 'lmf') else
                                      cur_config['global_code_size'],
                                      num_layers=cur_config['mirna_num_layers'],
                                      act_fun_list=['prelu'] * (cur_config['mirna_num_layers']),
@@ -116,11 +122,26 @@ def initialize_autoencoders(cur_modules: [str], cur_config: Dict, merge_method: 
                                      dropout_list=[0.1] + [0.2] * (cur_config['mirna_num_layers'] - 2) + [0.0],
                                      name="mirna")
         cur_autoencoders.append(mirna_model)
+    if 'metab' in cur_modules:
+        metab_model = DNNAutoEncoder(input_dim=metab_width,
+                                     first_layer_size=cur_config['metab_first_layer_size'],
+                                     code_layer_size=cur_config[
+                                         'metab_code_layer_size'] if (
+                                                 merge_method == 'concat' or merge_method == 'lmf') else
+                                     cur_config['global_code_size'],
+                                     num_layers=cur_config['metab_num_layers'],
+                                     # Linear activation ensures that negative numbers can be predicted
+                                     act_fun_list=['prelu'] * (cur_config['metab_num_layers']),
+                                     batchnorm_list=[True] * (cur_config['metab_num_layers'] - 1) + [False],
+                                     dropout_list=[0.1] + [0.2] * (cur_config['metab_num_layers'] - 2) + [0.0],
+                                     name="metab")
+        cur_autoencoders.append(metab_model)
 
     if 'hist' in cur_modules:
         hist_model = DNNAutoEncoder(input_dim=hist_width,
                                     first_layer_size=cur_config['hist_first_layer_size'],
-                                    code_layer_size=cur_config['hist_code_layer_size'] if merge_method == 'concat' else
+                                    code_layer_size=cur_config['hist_code_layer_size'] if (
+                                                merge_method == 'concat' or merge_method == 'lmf') else
                                     cur_config['global_code_size'],
                                     num_layers=cur_config['hist_num_layers'],
                                     # Linear activation ensures that negative numbers can be predicted
@@ -133,7 +154,8 @@ def initialize_autoencoders(cur_modules: [str], cur_config: Dict, merge_method: 
     if 'rppa' in cur_modules:
         rppa_model = DNNAutoEncoder(input_dim=rppa_width,
                                     first_layer_size=cur_config['rppa_first_layer_size'],
-                                    code_layer_size=cur_config['rppa_code_layer_size'] if merge_method == 'concat' else
+                                    code_layer_size=cur_config['rppa_code_layer_size'] if (
+                                                merge_method == 'concat' or merge_method == 'lmf') else
                                     cur_config['global_code_size'],
                                     num_layers=cur_config['rppa_num_layers'],
                                     # Linear activation ensures that negative numbers can be predicted
@@ -142,20 +164,6 @@ def initialize_autoencoders(cur_modules: [str], cur_config: Dict, merge_method: 
                                     dropout_list=[0.1] + [0.2] * (cur_config['rppa_num_layers'] - 2) + [0.0],
                                     name="rppa")
         cur_autoencoders.append(rppa_model)
-
-    if 'metab' in cur_modules:
-        metab_model = DNNAutoEncoder(input_dim=metab_width,
-                                     first_layer_size=cur_config['metab_first_layer_size'],
-                                     code_layer_size=cur_config[
-                                         'metab_code_layer_size'] if merge_method == 'concat' else
-                                     cur_config['global_code_size'],
-                                     num_layers=cur_config['metab_num_layers'],
-                                     # Linear activation ensures that negative numbers can be predicted
-                                     act_fun_list=['prelu'] * (cur_config['metab_num_layers']),
-                                     batchnorm_list=[True] * (cur_config['metab_num_layers'] - 1) + [False],
-                                     dropout_list=[0.1] + [0.2] * (cur_config['metab_num_layers'] - 2) + [0.0],
-                                     name="metab")
-        cur_autoencoders.append(metab_model)
 
     return cur_autoencoders
 
@@ -458,7 +466,10 @@ class DRPTrainable(Trainable):
               cv_subset_type: str = None, stratify: bool = None, random_morgan: bool = False,
               merge_method: str = "concat",
               loss_type: str = 'mae', one_hot_drugs: bool = False, transform: str = None,
-              min_dr_target: float = None, max_dr_target: float = None, gnn_drug: bool = False,
+              min_dr_target: float = None, max_dr_target: float = None,
+              dr_sub_cpd_names: [str] = None,
+              dr_sub_cell_names: [str] = None,
+              gnn_drug: bool = False,
               omic_standardize: bool = False, name_tag: str = None,
               to_gpu: bool = True, test_mode: bool = False,
               data_dir: str = "/home/l/lstein/ftaj/.conda/envs/drp1/Data/DRP_Training_Data/",
@@ -487,6 +498,8 @@ class DRPTrainable(Trainable):
         self.transform = transform
         self.min_dr_target = min_dr_target
         self.max_dr_target = max_dr_target
+        self.dr_sub_cpd_names = dr_sub_cpd_names
+        self.dr_sub_cell_names = dr_sub_cell_names
         self.gnn_drug = gnn_drug
         self.omic_standardize = omic_standardize
         self.test_mode = test_mode
@@ -555,15 +568,15 @@ class DRPTrainable(Trainable):
         if 'mirna' in self.cur_modules:
             self.cur_data_list.append(all_data_dict['mirna'])
             self.mirna_width = all_data_dict['mirna'].width()
-        if 'hist' in self.cur_modules:
-            self.cur_data_list.append(all_data_dict['hist'])
-            self.hist_width = all_data_dict['hist'].width()
         if 'rppa' in self.cur_modules:
             self.cur_data_list.append(all_data_dict['rppa'])
             self.rppa_width = all_data_dict['rppa'].width()
         if 'metab' in self.cur_modules:
             self.cur_data_list.append(all_data_dict['metab'])
             self.metab_width = all_data_dict['metab'].width()
+        if 'hist' in self.cur_modules:
+            self.cur_data_list.append(all_data_dict['hist'])
+            self.hist_width = all_data_dict['hist'].width()
 
         del all_data_dict
 
@@ -575,45 +588,29 @@ class DRPTrainable(Trainable):
         # Then the function will automatically make "new" indices and return them for saving in the checkpoint file
         # NOTE: The seed is the same, so the same subset is selected every time (!)
         # Load bottleneck and full data once, choose later on
-        if self.bottleneck is True:
-            self.cur_train_data, \
-            self.cur_cv_folds = drp_create_datasets(data_list=self.cur_data_list,
-                                                    key_columns=self.key_columns,
-                                                    n_folds=self.n_folds,
-                                                    drug_index=0,
-                                                    drug_dr_column="area_above_curve",
-                                                    class_column_name="primary_disease",
-                                                    subset_type=self.cv_subset_type,
-                                                    stratify=self.stratify,
-                                                    bottleneck_keys=self.bottleneck_keys,
-                                                    to_gpu=self.to_gpu,
-                                                    one_hot_drugs=self.one_hot_drugs,
-                                                    dr_sub_min_target=self.min_dr_target,
-                                                    dr_sub_max_target=self.max_dr_target,
-                                                    lds=lds,
-                                                    gnn_mode=self.gnn_drug,
-                                                    verbose=False)
-        else:
-            self.cur_train_data, \
-            self.cur_cv_folds = drp_create_datasets(data_list=self.cur_data_list,
-                                                    key_columns=self.key_columns,
-                                                    n_folds=self.n_folds,
-                                                    drug_index=0,
-                                                    drug_dr_column="area_above_curve",
-                                                    class_column_name="primary_disease",
-                                                    subset_type=self.cv_subset_type,
-                                                    stratify=self.stratify,
-                                                    test_drug_data=None,
-                                                    to_gpu=self.to_gpu,
-                                                    one_hot_drugs=self.one_hot_drugs,
-                                                    dr_sub_min_target=self.min_dr_target,
-                                                    dr_sub_max_target=self.max_dr_target,
-                                                    lds=lds,
-                                                    gnn_mode=self.gnn_drug,
-                                                    verbose=False)
+        self.cur_train_data, \
+        self.cur_cv_folds = drp_create_datasets(data_list=self.cur_data_list,
+                                                key_columns=self.key_columns,
+                                                n_folds=self.n_folds,
+                                                drug_index=0,
+                                                drug_dr_column="area_above_curve",
+                                                class_column_name="primary_disease",
+                                                subset_type=self.cv_subset_type,
+                                                stratify=self.stratify,
+                                                bottleneck_keys=self.bottleneck_keys if self.bottleneck is True else None,
+                                                test_drug_data=None,
+                                                to_gpu=self.to_gpu,
+                                                one_hot_drugs=self.one_hot_drugs,
+                                                dr_sub_min_target=self.min_dr_target,
+                                                dr_sub_max_target=self.max_dr_target,
+                                                dr_sub_cpd_names=self.dr_sub_cpd_names,
+                                                dr_sub_cell_names=self.dr_sub_cell_names,
+                                                lds=lds,
+                                                gnn_mode=self.gnn_drug,
+                                                mode="interpret" if self.test_mode else "train",
+                                                verbose=False)
 
         if self.gnn_drug is False:
-
             # Drug input with can depend on whether one-hot vectors or fingerprints are used! Must update here
             # TODO drug_input_width attr doesn't exists anymore, must update
             self.drug_width = self.cur_train_data.drug_input_width
@@ -641,6 +638,7 @@ class DRPTrainable(Trainable):
                                             dropout=config['gnn_dropout'])
             self.encoders = [self.attentive_fp] + self.encoders
 
+        del autoencoder_list
         # Determine layer sizes, add final target layer
         cur_layer_sizes = list(np.linspace(config['drp_first_layer_size'],
                                            config['drp_last_layer_size'],
@@ -656,7 +654,6 @@ class DRPTrainable(Trainable):
                 self.encoder_train,  # encoder_requirees_grad
                 [self.gnn_drug, self.gnn_out_channels] if self.gnn_drug is True else
                 [self.gnn_drug, None],  # gnn_info
-                # TODO: last layer must use a sigmoid to ensure values are between 0 & 1
                 ['silu'] * (config['drp_num_layers']) + ['sigmoid'],  # act_fun_list
                 [False] * (config['drp_num_layers']) + [False],  # batchnorm_list
                 [0.0] * config['drp_num_layers'] + [0.0],  # dropout_list
@@ -678,13 +675,14 @@ class DRPTrainable(Trainable):
                 ['silu'] * (config['drp_num_layers']) + ['sigmoid'],  # act_fun_list
                 [False] * (config['drp_num_layers']) + [False],  # batchnorm_list
                 [0.0] * config['drp_num_layers'] + [0.0],  # dropout_list
+                "test" if self.test_mode else "train"  # mode
             ]
             for encoder in self.encoders:
                 model_args.append(encoder)
-            if self.test_mode:
-                self.cur_model = LMFTest(*model_args)
-            else:
-                self.cur_model = LMF(*model_args)
+            # if self.test_mode:
+            #     self.cur_model = LMFTest(*model_args)
+            # else:
+            self.cur_model = LMF(*model_args)
 
         # NOTE: Must move model to GPU before initializing optimizers!!!
         self.cur_model = self.cur_model.float()
@@ -745,9 +743,10 @@ class DRPTrainable(Trainable):
             cur_layer_sizes = list(np.linspace(new_config['drp_first_layer_size'],
                                                new_config['drp_last_layer_size'],
                                                new_config['drp_num_layers']).astype(int))
+            cur_layer_sizes.append(1)
 
             # Recreate model with new configuration =========
-            cur_layer_sizes.append(1)
+            # Create variable length argument set for DRP model creation, depending on number of given encoders
             if self.merge_method != "lmf":
                 model_args = [cur_layer_sizes, [0] * len(self.encoders),
                               self.encoder_train,
@@ -798,7 +797,6 @@ class DRPTrainable(Trainable):
                 self.criterion = self.criterion.cuda()
 
             self.learning_rate = new_config['lr']
-            # self.optimizer = optim.Adam(self.cur_model.parameters(), lr=new_config["lr"])
 
             # Reset data loaders ==============
             # if new_config['bottleneck'] is True:
@@ -877,33 +875,48 @@ class FullModelTrainable(Trainable):
     """
 
     def setup(self, config, train_file: str = None, data_types: str = None, bottleneck: bool = None,
-              n_folds: int = None, max_epochs: int = None, encoder_train: bool = None, cv_subset_type: str = None,
-              stratify: bool = None, random_morgan: bool = False, merge_method: str = "concat", loss_type: str = 'mae',
-              one_hot_drugs: bool = False, transform: str = None, min_dr_target: float = None,
-              max_dr_target: float = None, gnn_drug: bool = False,
+              pretrain: bool = None, n_folds: int = None, max_epochs: int = None, encoder_train: bool = None,
+              cv_subset_type: str = None, stratify: bool = None, random_morgan: bool = False,
+              merge_method: str = "concat",
+              loss_type: str = 'mae', one_hot_drugs: bool = False, transform: str = None,
+              min_dr_target: float = None, max_dr_target: float = None,
+              dr_sub_cpd_names: [str] = None,
+              dr_sub_cell_names: [str] = None,
+              gnn_drug: bool = False,
+              omic_standardize: bool = False, name_tag: str = None,
+              to_gpu: bool = True, test_mode: bool = False,
+              data_dir: str = "/home/l/lstein/ftaj/.conda/envs/drp1/Data/DRP_Training_Data/",
               checkpoint_dir: str = "/.mounts/labs/steinlab/scratch/ftaj/"):
-        self.data_dir = "/home/l/lstein/ftaj/.conda/envs/drp1/Data/DRP_Training_Data/"
-        # self.data_dir = "/u/ftaj/anaconda3/envs/Python/Data/DRP_Training_Data/"
-        # self.data_dir = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/"
+        self.data_dir = data_dir
+        self.to_gpu = to_gpu
+        self.cur_config = config
+        # self.data_dir = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data"
         self.train_file = train_file
         self.data_types = data_types
         self.bottleneck = bottleneck
         self.bottleneck_path = "bottleneck_keys.csv"
         self.bottleneck_keys = None
-        self.timestep = 0
-        self.config = config
+        self.pretrain = pretrain
         self.n_folds = n_folds
         self.max_epochs = max_epochs
         self.encoder_train = encoder_train
         self.cv_subset_type = cv_subset_type
         self.stratify = stratify
-        self.merge_method = merge_method
+        self.timestep = 0
+        self.random_morgan = random_morgan
         self.loss_type = loss_type
+        self.merge_method = merge_method
+        self.batch_size = config["batch_size"]
         self.one_hot_drugs = one_hot_drugs
         self.transform = transform
         self.min_dr_target = min_dr_target
         self.max_dr_target = max_dr_target
+        self.dr_sub_cpd_names = dr_sub_cpd_names
+        self.dr_sub_cell_names = dr_sub_cell_names
         self.gnn_drug = gnn_drug
+        self.omic_standardize = omic_standardize
+        self.test_mode = test_mode
+        self.name_tag = name_tag
 
         if self.bottleneck is True:
             try:
@@ -911,21 +924,29 @@ class FullModelTrainable(Trainable):
             except:
                 exit("Could not read bottleneck file")
 
-        self.batch_size = self.config["batch_size"]
         # Since args.all_combos will be false, the main_prep function will only yield the desired combo
         self.cur_modules = self.data_types.split('_')
-        assert "drug" in self.cur_modules, "Drug data must be provided for drug-response prediction (training or testing)"
-        # assert len(self.cur_modules) > 1, "Data types to be used must be indicated by: mut, cnv, exp, prot and drug"
+
+        if self.merge_method == "sum":
+            global_code_size = config['global_code_size']
+        else:
+            global_code_size = None
+
         # Load all data types; this helps with instantiating auto-encoders based on correct input size
         all_data_dict, _, self.key_columns, \
         self.gpu_locs = drp_load_datatypes(train_file=self.train_file,
                                            module_list=self.cur_modules,
                                            PATH=self.data_dir,
                                            file_name_dict=file_name_dict,
-                                           load_autoencoders=False,
-                                           random_morgan=random_morgan,
+                                           load_autoencoders=True,
+                                           _pretrain=self.pretrain,
+                                           global_code_size=global_code_size,
+                                           random_morgan=self.random_morgan,
                                            transform=transform,
-                                           device='gpu')
+                                           # one-hot drugs cannot be pretrained/embedded,
+                                           # so a new auto-encoder will be instantiated
+                                           device='cpu',
+                                           verbose=False)
 
         # Add drug data TODO What if someone doesn't wanna use morgan data? some other drug data? or nothin...
         if self.gnn_drug is False:
@@ -958,15 +979,15 @@ class FullModelTrainable(Trainable):
         if 'mirna' in self.cur_modules:
             self.cur_data_list.append(all_data_dict['mirna'])
             self.mirna_width = all_data_dict['mirna'].width()
+        if 'metab' in self.cur_modules:
+            self.cur_data_list.append(all_data_dict['metab'])
+            self.metab_width = all_data_dict['metab'].width()
         if 'hist' in self.cur_modules:
             self.cur_data_list.append(all_data_dict['hist'])
             self.hist_width = all_data_dict['hist'].width()
         if 'rppa' in self.cur_modules:
             self.cur_data_list.append(all_data_dict['rppa'])
             self.rppa_width = all_data_dict['rppa'].width()
-        if 'metab' in self.cur_modules:
-            self.cur_data_list.append(all_data_dict['metab'])
-            self.metab_width = all_data_dict['metab'].width()
 
         del all_data_dict
 
@@ -977,49 +998,40 @@ class FullModelTrainable(Trainable):
 
         # Then the function will automatically make "new" indices and return them for saving in the checkpoint file
         # NOTE: The seed is the same, so the same subset is selected every time
-        if self.bottleneck is True:
-            self.cur_train_data, \
-            self.cur_cv_folds = drp_create_datasets(data_list=self.cur_data_list,
-                                                    key_columns=self.key_columns,
-                                                    n_folds=self.n_folds,
-                                                    drug_index=0,
-                                                    drug_dr_column="area_above_curve",
-                                                    class_column_name="primary_disease",
-                                                    subset_type=self.cv_subset_type,
-                                                    stratify=self.stratify,
-                                                    bottleneck_keys=self.bottleneck_keys,
-                                                    one_hot_drugs=self.one_hot_drugs,
-                                                    dr_sub_min_target=self.min_dr_target,
-                                                    dr_sub_max_target=self.max_dr_target,
-                                                    lds=lds,
-                                                    gnn_mode=self.gnn_drug,
-                                                    to_gpu=True)
-        else:
-            self.cur_train_data, \
-            self.cur_cv_folds = drp_create_datasets(data_list=self.cur_data_list,
-                                                    key_columns=self.key_columns,
-                                                    n_folds=self.n_folds,
-                                                    drug_index=0,
-                                                    drug_dr_column="area_above_curve",
-                                                    class_column_name="primary_disease",
-                                                    subset_type=self.cv_subset_type,
-                                                    stratify=self.stratify,
-                                                    test_drug_data=None,
-                                                    one_hot_drugs=self.one_hot_drugs,
-                                                    dr_sub_min_target=self.min_dr_target,
-                                                    dr_sub_max_target=self.max_dr_target,
-                                                    lds=lds,
-                                                    gnn_mode=self.gnn_drug,
-                                                    to_gpu=True)
+        self.cur_train_data, \
+        self.cur_cv_folds = drp_create_datasets(data_list=self.cur_data_list,
+                                                key_columns=self.key_columns,
+                                                n_folds=self.n_folds,
+                                                drug_index=0,
+                                                drug_dr_column="area_above_curve",
+                                                class_column_name="primary_disease",
+                                                subset_type=self.cv_subset_type,
+                                                stratify=self.stratify,
+                                                bottleneck_keys=self.bottleneck_keys if self.bottleneck is True else None,
+                                                test_drug_data=None,
+                                                to_gpu=self.to_gpu,
+                                                one_hot_drugs=self.one_hot_drugs,
+                                                dr_sub_min_target=self.min_dr_target,
+                                                dr_sub_max_target=self.max_dr_target,
+                                                dr_sub_cpd_names=self.dr_sub_cpd_names,
+                                                dr_sub_cell_names=self.dr_sub_cell_names,
+                                                lds=lds,
+                                                gnn_mode=self.gnn_drug,
+                                                mode="interpret" if self.test_mode else "train",
+                                                verbose=False)
 
         if self.gnn_drug is False:
             # Drug input with can depend on whether one-hot vectors or fingerprints are used
             # TODO drug_input_width attr doesn't exists anymore, must update
             self.drug_width = self.cur_train_data.drug_input_width
+        else:
+            self.drug_width = None
 
         # Instantiate auto-encoders based on the given cur_modules and data input sizes
-        print("Current auto-encoder modules are:", self.cur_modules)
-        cur_autoencoders = initialize_autoencoders(cur_modules=self.cur_modules,
+        # print("Current auto-encoder modules are:", self.cur_modules)
+        # TODO: This is the primary difference with the class DRPTrainable. Find a way to consolidate
+        # the two classes!
+        autoencoder_list = initialize_autoencoders(cur_modules=self.cur_modules,
                                                    cur_config=config,
                                                    merge_method=self.merge_method,
                                                    drug_width=self.drug_width,
@@ -1032,21 +1044,24 @@ class FullModelTrainable(Trainable):
                                                    rppa_width=self.rppa_width,
                                                    metab_width=self.metab_width)
         # Extract encoders from auto-encoders
-        self.encoders = [ExtractEncoder(autoencoder) for autoencoder in cur_autoencoders]
+        self.encoders = [ExtractEncoder(autoencoder) for autoencoder in autoencoder_list]
 
         if self.gnn_drug is True:
-            # gnndrug does not have an autoencoder yet, must create Attentive FP model for drug processing
-            self.gnn_drug = AttentiveFP(in_channels=37,
-                                        hidden_channels=config['gnn_hidden_channels'],
-                                        out_channels=config['gnn_out_channels'],
-                                        edge_dim=10,
-                                        num_layers=config['gnn_num_layers'],
-                                        num_timesteps=config['gnn_num_timesteps'],
-                                        dropout=config['gnn_dropout'])
-            self.encoders = [self.gnn_drug] + self.encoders
+            self.gnn_out_channels = config['gnn_out_channels'] if global_code_size is None else global_code_size
+            self.encoders = [ExtractEncoder(autoencoder) for autoencoder in autoencoder_list]
 
-        print("Current number of encoders are:", len(self.encoders))
-        del cur_autoencoders
+            # gnndrug does not have an autoencoder yet, must create Attentive FP model for drug processing
+            self.attentive_fp = AttentiveFP(in_channels=37,
+                                            hidden_channels=config['gnn_hidden_channels'],
+                                            out_channels=config['gnn_out_channels'],
+                                            edge_dim=10,
+                                            num_layers=config['gnn_num_layers'],
+                                            num_timesteps=config['gnn_num_timesteps'],
+                                            dropout=config['gnn_dropout'])
+            self.encoders = [self.attentive_fp] + self.encoders
+
+        # print("Current number of encoders are:", len(self.encoders))
+        del autoencoder_list
 
         # Determine layer sizes, add final target layer
         cur_layer_sizes = list(np.linspace(config['drp_first_layer_size'],
@@ -1058,13 +1073,13 @@ class FullModelTrainable(Trainable):
             # Create variable length argument set for DRP model creation, depending on number of given encoders
             model_args = [
                 cur_layer_sizes,
-                [0] * len(self.encoders),  # gpu_locs
+                # [0] * len(self.encoders),  # gpu_locs
                 self.encoder_train,  # encoder_requirees_grad
-                [self.gnn_drug, config['gnn_out_channels']],  # gnn_info
-                # TODO: last layer must use a sigmoid to ensure values are between 0 & 1
-                ['silu'] * (config['drp_num_layers'] + 1) + ['silu'],  # act_fun_list
-                [True] * (config['drp_num_layers'] + 1) + [False],  # batchnorm_list
-                [0.0] + [0.05] * config['drp_num_layers'] + [0.0],  # dropout_list
+                [self.gnn_drug, self.gnn_out_channels] if self.gnn_drug is True else
+                [self.gnn_drug, None],  # gnn_info
+                ['silu'] * (config['drp_num_layers']) + ['sigmoid'],  # act_fun_list
+                [False] * (config['drp_num_layers']) + [False],  # batchnorm_list
+                [0.0] * config['drp_num_layers'] + [0.0],  # dropout_list
                 self.merge_method
             ]  # merge_method
             for encoder in self.encoders:
@@ -1076,30 +1091,41 @@ class FullModelTrainable(Trainable):
             model_args = [
                 cur_layer_sizes,
                 self.encoder_train,
-                [self.gnn_drug, config['gnn_out_channels']],  # gnn_info
+                [self.gnn_drug, self.gnn_out_channels] if self.gnn_drug is True else
+                [self.gnn_drug, None],  # gnn_info
                 config['lmf_output_dim'],  # output dim
                 config['lmf_rank'],  # rank
-                ['silu'] * (config['drp_num_layers'] + 1) + ['silu'],  # act_fun_list
-                [True] * (config['drp_num_layers'] + 1) + [False],  # batchnorm_list
-                [0.0] + [0.05] * config['drp_num_layers'] + [0.0],  # dropout_list
+                ['silu'] * (config['drp_num_layers']) + ['sigmoid'],  # act_fun_list
+                [False] * (config['drp_num_layers']) + [False],  # batchnorm_list
+                [0.0] * config['drp_num_layers'] + [0.0],  # dropout_list
+                "test" if self.test_mode else "train"  # mode
             ]
             for encoder in self.encoders:
                 model_args.append(encoder)
+            # if self.test_mode:
+            #     self.cur_model = LMFTest(*model_args)
+            # else:
             self.cur_model = LMF(*model_args)
 
         # NOTE: Must move model to GPU before initializing optimizers!!!
         self.cur_model = self.cur_model.float()
-        self.cur_model = self.cur_model.cuda()
+
         if self.loss_type == "mae":
-            self.criterion = nn.L1Loss().cuda()
+            self.criterion = nn.L1Loss()
         elif self.loss_type == "mse":
-            self.criterion = nn.MSELoss().cuda()
+            self.criterion = nn.MSELoss()
         elif self.loss_type == "rmsle":
-            self.criterion = RMSLELoss().cuda()
+            self.criterion = RMSLELoss()
         elif self.loss_type == "weighted_rmse" or self.loss_type == "rmse":
-            self.criterion = WeightedRMSELoss().cuda()
+            # WeightedRMSELoss can also handle equally weighted losses
+            self.criterion = WeightedRMSELoss()
         else:
             exit("Unknown loss function requested")
+
+        if self.to_gpu is True:
+            # self.cur_model = self.cur_model.cuda()
+            self.criterion = self.criterion.cuda()
+
         # NOTE: optimizer should be defined immediately after a model is copied/moved/altered etc.
         # Not doing so will point the optimizer to a zombie model!
         # self.optimizer = optim.Adam(self.cur_model.parameters(), lr=config["lr"])
@@ -1115,8 +1141,15 @@ class FullModelTrainable(Trainable):
         #     self.cur_train_data = self.train_data
 
     def reset_config(self, new_config):
-        try:
+        self.cur_config = new_config
+        if self.merge_method == "sum":
+            global_code_size = new_config['global_code_size']
+        else:
+            global_code_size = None
 
+        self.gnn_out_channels = new_config['gnn_out_channels'] if global_code_size is None else global_code_size
+
+        try:
             # Reset model with new_config ===================
             cur_autoencoders = initialize_autoencoders(cur_modules=self.cur_modules,
                                                        cur_config=new_config,
@@ -1127,9 +1160,10 @@ class FullModelTrainable(Trainable):
                                                        exp_width=self.exp_width,
                                                        prot_width=self.prot_width,
                                                        mirna_width=self.mirna_width,
+                                                       metab_width=self.metab_width,
                                                        hist_width=self.hist_width,
                                                        rppa_width=self.rppa_width,
-                                                       metab_width=self.metab_width)
+                                                       )
 
             self.encoders = [ExtractEncoder(autoencoder) for autoencoder in cur_autoencoders]
             del cur_autoencoders
@@ -1145,19 +1179,22 @@ class FullModelTrainable(Trainable):
                 # Update/replace gnn drug encoder with the new configuration
                 self.encoders = [self.gnn_drug] + self.encoders[1:]
 
+            self.batch_size = new_config["batch_size"]
             # Determine layer sizes, add final target layer
             cur_layer_sizes = list(np.linspace(new_config['drp_first_layer_size'],
                                                new_config['drp_last_layer_size'],
                                                new_config['drp_num_layers']).astype(int))
             cur_layer_sizes.append(1)
+
             # Create variable length argument set for DRP model creation, depending on number of given encoders
             if self.merge_method != "lmf":
                 model_args = [cur_layer_sizes, [0] * len(self.encoders),
                               self.encoder_train,
-                              [self.gnn_drug, new_config['gnn_out_channels']],  # gnn_info
-                              ['silu'] * (new_config['drp_num_layers'] + 1) + ['silu'],
-                              [True] * (new_config['drp_num_layers'] + 1) + [False],
-                              [0.0] + [0.05] * new_config['drp_num_layers'] + [0.0],
+                              [self.gnn_drug, self.gnn_out_channels] if self.gnn_drug is True else
+                              [self.gnn_drug, None],  # gnn_info
+                              ['silu'] * (new_config['drp_num_layers']) + ['sigmoid'],
+                              [False] * (new_config['drp_num_layers']) + [False],
+                              [0.0] * new_config['drp_num_layers'] + [0.0],
                               self.merge_method]
                 for encoder in self.encoders:
                     model_args.append(encoder)
@@ -1168,12 +1205,13 @@ class FullModelTrainable(Trainable):
                 model_args = [
                     cur_layer_sizes,
                     self.encoder_train,
-                    [self.gnn_drug, new_config['gnn_out_channels']],  # gnn_info
+                    [self.gnn_drug, self.gnn_out_channels] if self.gnn_drug is True else
+                    [self.gnn_drug, None],  # gnn_info
                     new_config['lmf_output_dim'],  # output dim
                     new_config['lmf_rank'],  # rank
-                    ['silu'] * (new_config['drp_num_layers'] + 1) + ['silu'],  # act_fun_list
-                    [True] * (new_config['drp_num_layers'] + 1) + [False],  # batchnorm_list
-                    [0.0] + [0.05] * new_config['drp_num_layers'] + [0.0],  # dropout_list
+                    ['silu'] * (new_config['drp_num_layers']) + ['sigmoid'],  # act_fun_list
+                    [False] * (new_config['drp_num_layers']) + [False],  # batchnorm_list
+                    [0.0] * new_config['drp_num_layers'] + [0.0],  # dropout_list
                 ]
                 for encoder in self.encoders:
                     model_args.append(encoder)
@@ -1181,18 +1219,25 @@ class FullModelTrainable(Trainable):
 
             # NOTE: Must move model to GPU before initializing optimizers!!!
             self.cur_model = self.cur_model.float()
-            self.cur_model = self.cur_model.cuda()
+
+            self.cur_model = self.cur_model.float()
             if self.loss_type == "mae":
-                self.criterion = nn.L1Loss().cuda()
+                self.criterion = nn.L1Loss()
             elif self.loss_type == "mse":
-                self.criterion = nn.MSELoss().cuda()
+                self.criterion = nn.MSELoss()
             elif self.loss_type == "rmsle":
-                self.criterion = RMSLELoss().cuda()
+                self.criterion = RMSLELoss()
+            # elif self.loss_type == "rmse":
+            #     self.criterion = RMSELoss().cuda()
             elif self.loss_type == "weighted_rmse" or self.loss_type == "rmse":
-                self.criterion = WeightedRMSELoss().cuda()
+                self.criterion = WeightedRMSELoss()
+
             else:
                 exit("Unknown loss function requested")
-            # self.optimizer = optim.Adam(self.cur_model.parameters(), lr=new_config["lr"])
+
+            if self.to_gpu is True:
+                # self.cur_model = self.cur_model.cuda()
+                self.criterion = self.criterion.cuda()
             self.learning_rate = new_config['lr']
 
             # Reset data loaders =========================
@@ -1212,6 +1257,8 @@ class FullModelTrainable(Trainable):
         self.timestep += 1
         start_time = time.time()
 
+        epoch_save_folder = "/scratch/l/lstein/ftaj/EpochResults/CrossValidation/" + self.name_tag
+
         self.avg_train_losses, \
         self.avg_valid_losses, \
         self.avg_untrained_losses, \
@@ -1224,11 +1271,17 @@ class FullModelTrainable(Trainable):
                                               criterion=self.criterion,
                                               max_epochs=self.max_epochs,
                                               learning_rate=self.learning_rate,
+                                              theoretical_loss=False,
                                               NUM_WORKERS=NUM_WORKERS,
-                                              theoretical_loss=True,
-                                              patience=15,
+                                              verbose=True,
+                                              patience=5,
                                               delta=0.01,
-                                              verbose=True)
+                                              omic_standardize=self.omic_standardize,
+                                              save_epoch_results=False,
+                                              save_cv_preds=False,
+                                              epoch_save_folder=epoch_save_folder,
+                                              to_gpu=self.to_gpu
+                                              )
 
         duration = time.time() - start_time
 

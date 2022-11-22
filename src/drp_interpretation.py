@@ -30,6 +30,13 @@ from TuneTrainables import file_name_dict, DRPTrainable
 from drug_visualization import aggregate_node, aggregate_edge_directions, draw_molecule, drug_interpret_viz
 import matplotlib.pyplot as plt
 
+TARGETED_DRUGS = ["Idelalisib", "Olaparib", "Venetoclax", "Crizotinib", "Regorafenib",
+                    "Tretinoin", "Bortezomib", "Cabozantinib", "Dasatinib", "Erlotinib",
+                    "Sonidegib", "Vandetanib", "Axitinib", "Ibrutinib", "Gefitinib",
+                    "Nilotinib", "Tamoxifen", "Bosutinib", "Pazopanib", "Lapatinib",
+                    "Dabrafenib", "Bexarotene", "Temsirolimus", "Belinostat",
+                    "Sunitinib", "Vorinostat", "Trametinib", "Fulvestrant", "Sorafenib",
+                    "Vemurafenib", "Alpelisib"]
 
 # def visualize_importances(feature_names, importances, title="Average Feature Importances", top_n=10, plot=True,
 #                           axis_title="Features"):
@@ -59,11 +66,20 @@ def interpret(args):
         local_dir = "/scratch/l/lstein/ftaj/"
         cur_device = "cuda"
         to_gpu = True
+        PATH = "/scratch/l/lstein/ftaj/"
+        cv_checkpoint_path = "/scratch/l/lstein/ftaj/EpochResults/CrossValidation/" + args.name_tag +\
+                             "/checkpoint_cv_" + args.which_model + ".pt"
+
     else:
         data_dir = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/DRP_Training_Data/"
         local_dir = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/"
         cur_device = "cpu"
         to_gpu = False
+        PATH = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/CV_Results/"
+        cv_checkpoint_path = "/Volumes/Farzan_External_Drive/Drug_Response/EpochResults/CrossValidation/" + \
+                             args.name_tag + "/checkpoint_cv_" + args.which_model + ".pt"
+
+        # HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_CELL_LINE_NoBottleNeck_NoTCGAPretrain_MergeByLMF_WeightedRMSELoss_GNNDrugs_gnndrug_metab_rppa/checkpoint_cv_0.pt"
 
     if bool(int(args.full)) is True:
         tag = "FullModel"
@@ -72,14 +88,14 @@ def interpret(args):
 
     # Create the results directory and file paths
     experiment_name = "HyperOpt_DRP_" + tag + '_' + "_".join(args.data_types) + '_' + args.name_tag
-    # experiment_name = "HyperOpt_DRP_" + tag + '_' + "gnndrug_prot" + '_' + "HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_BOTH_NoBottleNeck_NoTCGAPretrain_MergeByLMF_WeightedRMSELoss_GNNDrugs_gnndrug_prot"
-    # name_tag = "HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_BOTH_NoBottleNeck_NoTCGAPretrain_MergeByLMF_WeightedRMSELoss_GNNDrugs_gnndrug_prot"
+    # experiment_name = "HyperOpt_DRP_" + tag + '_' + "gnndrug_metab_rppa" + '_' + "HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_CELL_LINE_NoBottleNeck_NoTCGAPretrain_MergeByLMF_WeightedRMSELoss_GNNDrugs_gnndrug_metab_rppa"
+    # name_tag = "HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_CELL_LINE_NoBottleNeck_NoTCGAPretrain_MergeByLMF_WeightedRMSELoss_GNNDrugs_gnndrug_metab_rppa"
     result_dir = local_dir + "/CV_Results/" + experiment_name
     if not os.path.isdir(result_dir):
         os.mkdir(result_dir)
     print("Result directory is:", result_dir)
 
-    # data_types = "gnndrug_prot"
+    # data_types = "gnndrug_metab_rppa"
     data_types = '_'.join(args.data_types)
     print("Current data types are:", data_types)
     if args.which_model == "final":
@@ -89,15 +105,11 @@ def interpret(args):
         saved_state_dict = saved_model.state_dict()
 
     else:
-        cv_checkpoint_path = "/scratch/l/lstein/ftaj/EpochResults/CrossValidation/" + args.name_tag +\
-                             "/checkpoint_cv_" + args.which_model + ".pt"
         saved_model = torch.load(
             cv_checkpoint_path,
             map_location=torch.device(cur_device))
         saved_state_dict = saved_model['model_state_dict']
 
-    PATH = "/scratch/l/lstein/ftaj/"
-    # PATH = "/Users/ftaj/OneDrive - University of Toronto/Drug_Response/Data/CV_Results/"
     if "FullModel" in args.name_tag:
         tag = "FullModel"
     else:
@@ -110,7 +122,7 @@ def interpret(args):
     #     print("Changing config source from GDSC1/2 to CTRP")
     #     name_tag = re.sub("GDSC[1,2]", "CTRP", name_tag)
 
-    # file_address = PATH + "HyperOpt_DRP_" + tag + '_' + "_".join(['gnndrug', 'prot']) + '_' + name_tag + '/best_config.json'
+    # file_address = PATH + "HyperOpt_DRP_" + tag + '_' + "_".join(['gnndrug', 'metab', 'rppa']) + '_' + name_tag + '/best_config.json'
     file_address = PATH + "HyperOpt_DRP_" + tag + '_' + "_".join(
         args.data_types) + '_' + name_tag + '/best_config.json'
     print("Best config file should be at:", file_address)
@@ -128,9 +140,10 @@ def interpret(args):
     cur_trainable = tune.with_parameters(DRPTrainable,
                                          # train_file=args.train_file,
                                          train_file="CTRP_AAC_SMILES.txt" if "gnndrug" in args.data_types else "CTRP_AAC_MORGAN_1024.hdf",
+                                         # train_file="CTRP_AAC_SMILES.txt",
                                          data_dir=data_dir,
                                          data_types='_'.join(args.data_types),
-                                         # data_types="gnndrug_prot",
+                                         # data_types="gnndrug_rppa_metab",
                                          # bottleneck=bool(int(args.bottleneck)),
                                          bottleneck=False,
                                          # pretrain=bool(int(args.pretrain)),
@@ -150,10 +163,13 @@ def interpret(args):
                                          # gnn_drug=True,
                                          to_gpu=to_gpu,
                                          # transform=args.transform,
-                                         min_dr_target=args.min_target if args.min_target != 0 else None,
+                                         # min_dr_target=args.min_target if args.min_target != 0 else None,
+                                         # min_dr_target=0.65,
+                                         # dr_sub_cpd_names=TARGETED_DRUGS if args.targeted_drugs_only else None,
+                                         # dr_sub_cpd_names=TARGETED_DRUGS,
                                          # max_dr_target=args.max_dr_target,
                                          omic_standardize=True,
-                                         test_mode=True,
+                                         test_mode=True
                                          )
 
     cur_trainable = cur_trainable(config=config, logger_creator=MyLoggerCreator)
@@ -161,13 +177,53 @@ def interpret(args):
     cur_model, criterion = cur_trainable.cur_model, cur_trainable.criterion
     cur_train_data, cur_cv_folds = cur_trainable.cur_train_data, cur_trainable.cur_cv_folds
 
+    if args.specific_drugs is None and args.specific_cells is None:
+        # Get cv fold validation drugs and cell lines
+        if args.which_model is not None:
+            full_valid_cpd = [cur_train_data.drug_names[i] for i in cur_cv_folds[int(args.which_model)][1]]
+            full_valid_ccl = [cur_train_data.drug_data_keys[i] for i in cur_cv_folds[int(args.which_model)][1]]
+        else:
+            # full_valid_cpd = [cur_train_data.drug_names[i] for i in cur_cv_folds[0][1]]
+            # full_valid_ccl = [cur_train_data.drug_data_keys[i] for i in cur_cv_folds[0][1]]
+            full_valid_cpd = cur_train_data.drug_names
+            full_valid_ccl = cur_train_data.drug_data_keys
+    elif args.specific_drugs is None and args.specific_cells is not None:
+        full_valid_ccl = args.specific_cells
+        full_valid_cpd = [cur_train_data.drug_names[i] for i in cur_cv_folds[int(args.which_model)][1]]
+    elif args.specific_drugs is not None and args.specific_cells is None:
+        full_valid_ccl = [cur_train_data.drug_data_keys[i] for i in cur_cv_folds[int(args.which_model)][1]]
+        full_valid_cpd = args.specific_drugs
+    else:
+        full_valid_ccl = args.specific_cells
+        full_valid_cpd = args.specific_drugs
 
+    cur_valid_dict = dict(zip(full_valid_cpd, full_valid_ccl))
+
+    if args.targeted_drugs_only is True:
+        # Find the targeted drugs that are in this validation set
+        cur_drug_subset = set(TARGETED_DRUGS).intersection(set(cur_valid_dict.keys()))
+    else:
+        cur_drug_subset = set(cur_valid_dict.keys())
+
+    cur_cell_subset = set(cur_valid_dict.values())
+    print("Current valid drugs:", cur_drug_subset)
+    print("Length of current valid drugs:", len(cur_drug_subset))
+    print("Current valid cell lines:", cur_cell_subset)
+    print("Length of current valid cell lines:", len(cur_cell_subset))
+
+    # cur_train_data.subset(cpd_names=cur_drug_subset, cell_lines=cur_cell_subset)
+    cur_train_data.subset_cpds(cpd_names=cur_drug_subset)
+    cur_train_data.subset_cells(cell_lines=cur_cell_subset)
+
+    # Subset training data based on DR target values
+    if args.min_target is not None:
+        cur_train_data.subset(min_target=args.min_target)
 
     if args.machine != "mist":
         # Must update some layer names due to PyG's naming scheme change
         up_dict = {'att_l': 'att_src', 'att_r': "att_dst", "lin_l": "lin_src", "lin_r": "lin_dst"}
         pattern = r'\b({})\b'.format('|'.join(sorted(re.escape(k) for k in up_dict)))
-        for key in list(saved_model.state_dict().keys()):
+        for key in list(saved_model['model_state_dict'].keys()):
             new_key = re.sub(pattern, lambda m: up_dict.get(m.group(0)), key)
             saved_state_dict[new_key] = saved_state_dict.pop(key)
 
@@ -178,51 +234,16 @@ def interpret(args):
     print("Loading saved model state_dict...")
     cur_model.load_state_dict(saved_state_dict)
 
-    # data_dict, _, key_columns, gpu_locs = drp_load_datatypes(
-    #     # train_file=args.data_set,
-    #     train_file="CTRP_AAC_SMILES.txt" if "gnndrug" in args.data_types else "CTRP_AAC_MORGAN_1024.hdf",
-    #     module_list=args.data_types,
-    #     # module_list=["gnndrug", "prot"],
-    #     PATH=data_dir,
-    #     file_name_dict=file_name_dict,
-    #     load_autoencoders=False,
-    #     _pretrain=False,
-    #     device='cpu',
-    #     verbose=False)
-    # data_list = list(data_dict.values())
-    #
-    # # with infer_mode=True, the Dataset also returns the drug and cell line names with the batch
-    # cur_train_data, cur_cv_folds = drp_create_datasets(data_list=data_list,
-    #                                                    key_columns=key_columns,
-    #                                                    n_folds=5,
-    #                                                    drug_index=0,
-    #                                                    drug_dr_column="area_above_curve",
-    #                                                    class_column_name="primary_disease",
-    #                                                    subset_type="both",
-    #                                                    test_drug_data=None,
-    #                                                    mode='interpret',
-    #                                                    # infer_mode=False,
-    #                                                    gnn_mode=True if 'gnndrug' in args.data_types else False,
-    #                                                    # gnn_mode=True,
-    #                                                    to_gpu=to_gpu,
-    #                                                    # lds=True,
-    #                                                    dr_sub_min_target=args.min_target if args.min_target != 0 else None,
-    #                                                    # dr_sub_max_target=args.max_dr_target,
-    #                                                    verbose=True)
-    # cur_train_data.standardize()
-
-    # if args.min_target != 0:
-    #     # cur_train_data.subset(min_target=0.8)
-    #     cur_train_data.subset(min_target=args.min_target)
-
     omic_types = args.data_types[1:]
-    # omic_types = ['prot']
-    if args.which_model != "final":
-        cur_valid_sampler = SubsetRandomSampler(cur_cv_folds[int(args.which_model)][1])
-    else:
-        cur_valid_sampler = None
+    # omic_types = ['metab', 'rppa']
+
+    # if args.which_model != "final":
+    #     cur_valid_sampler = SubsetRandomSampler(cur_cv_folds[int(args.which_model)][1])
+    #     # cur_valid_sampler = SubsetRandomSampler(cur_cv_folds[0][1])
+    # else:
+    #     cur_valid_sampler = None
     train_loader = DataLoader(cur_train_data,
-                              sampler=cur_valid_sampler,
+                              # sampler=cur_valid_sampler,
                               # batch_size=int(args.sample_size),
                               batch_size=1,
                               shuffle=False,
@@ -283,6 +304,8 @@ def interpret(args):
     # train_iter = iter(train_loader)
     # cur_samples = train_iter.next()
     # t1 = cur_samples[1]
+    # t2 = cur_samples[2]
+    # t2[0].shape
 
     # while cur_dr_data is not None:
     for i, cur_samples in enumerate(train_loader):
@@ -293,8 +316,10 @@ def interpret(args):
             cur_samples[1][1] = torch.squeeze(cur_samples[1][1], 0)
             cur_samples[1][2] = torch.squeeze(cur_samples[1][2], 0)
             # Add batch
-            # cur_samples[1] += [torch.zeros(cur_samples[1][0].shape[0], dtype=int)]
-            cur_samples[1] += [torch.zeros(cur_samples[1][0].shape[0], dtype=int).cuda()]
+            if args.machine == "mist":
+                cur_samples[1] += [torch.zeros(cur_samples[1][0].shape[0], dtype=int).cuda()]
+            else:
+                cur_samples[1] += [torch.zeros(cur_samples[1][0].shape[0], dtype=int)]
 
             cur_output = cur_model(cur_samples[1], cur_samples[2])
             # Do not use LDS during inference
@@ -365,13 +390,13 @@ def interpret(args):
         Path(result_dir+"/drug_plots/").mkdir(parents=True, exist_ok=True)
         # Plot positive and negative attributions on the drug molecule and save as a PNG plot
         drug_interpret_viz(edge_attr=zero_dl_attr_train[-1], node_attr=zero_dl_attr_train[-2],
-                           drug_graph=cur_graph, sample_info=cur_samples[0],
+                           drug_graph=cur_graph, sample_info=cur_samples[0], target=str(round(cur_targets[0], 3)),
                            plot_address=result_dir+"/drug_plots/")
 
         for j in range(0, len(zero_dl_attr_train) - 2):  # ignore drug data (for now)
-            cur_col_names = cur_train_data.omic_column_names[j - 1]
+            cur_col_names = cur_train_data.omic_column_names[j]
             for jj in range(len(cur_col_names)):
-                cur_dict[omic_types[j - 1] + '_' + cur_col_names[jj]] = zero_dl_attr_train[j][:, jj].tolist()
+                cur_dict[omic_types[j] + '_' + cur_col_names[jj]] = zero_dl_attr_train[j][:, jj].tolist()
 
         all_interpret_results.append(pd.DataFrame.from_dict(cur_dict))
 
@@ -382,7 +407,7 @@ def interpret(args):
                 print("Profiling done!")
                 break
 
-        if i % 1000 == 0:
+        if i % 100 == 0:
             print("Current batch:", i, ", elapsed:", str(time.time() - start_time), "seconds")
             # cur_len = len(cur_col_names)
             # cur_dataframe = pd.DataFrame(data={'data_type': [omic_types[i]] * cur_len,
@@ -396,9 +421,14 @@ def interpret(args):
         # cur_cpd_cell, cur_dr_data, cur_dr_target = train_iter.next()
 
     results_df = pd.concat(all_interpret_results)
-    print("Saving results to:", result_dir + '/integrated_gradients_results.hdf')
+    if args.which_model is not None:
+        ig_dest = result_dir + "/integrated_gradients_results_checkpoint_" + args.which_model + ".csv"
+    else:
+        ig_dest = result_dir + "/integrated_gradients_results_final_model.csv"
+
+    print("Saving results to:", ig_dest)
     # results_df.to_hdf(result_dir+'/deeplift_results.hdf', key='df', mode='w')
-    results_df.to_csv(result_dir + '/integrated_gradients_results.csv', float_format='%g')
+    results_df.to_csv(ig_dest, float_format='%g')
     # Measure attributions with IntegratedGradients ================
     # zero_ig_attr_train = ig.attribute(
     #     inputs=tuple(cur_dr_data),
@@ -511,6 +541,11 @@ if __name__ == "__main__":
     parser.add_argument('--min_target', help="Subset DRP data by a minimum AAC", type=float, default=0.0)
     parser.add_argument('--which_model', help="Whether to load the (final) model or a specific CV index checkpoint",
                         default="final")
+    parser.add_argument('--targeted_drugs_only',
+                        help="Whether to subset to only targeted drugs for interpretation", action="store_true")
+
+    parser.add_argument('--specific_drugs', help="Specific compound names to interpret on", nargs='+')
+    parser.add_argument('--specific_cells', help="Specific cell line names to interpret on", nargs='+')
 
     args = parser.parse_args()
 

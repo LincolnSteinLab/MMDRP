@@ -38,7 +38,7 @@ def infer(args):
         os.mkdir(result_dir)
     print("Result directory is:", result_dir)
 
-    # data_types = "gnndrug exp"
+    # data_types = "gnndrug_exp"
 
     data_types = '_'.join(args.data_types)
     print("Current data types are:", data_types)
