@@ -11,59 +11,109 @@ all_combos <- c(
   # "gnndrug exp mirna",
   # "gnndrug prot rppa",
   # "gnndrug cnv prot",
-  # "gnndrug mut cnv",
+  "gnndrug mut cnv",
   # "gnndrug mirna metab",
   # "gnndrug metab hist",
   # "gnndrug metab rppa",
-  # "gnndrug mut exp cnv",
-  # "gnndrug mut cnv exp",
-  # "gnndrug mut cnv exp prot",
+  
+  # "drug cnv exp metab"
+  
   # "gnndrug cnv exp prot",
-  # "gnndrug exp rppa prot",
+  # "gnndrug cnv exp prot mirna metab hist rppa",
   # "gnndrug exp rppa hist prot",
+  # "gnndrug exp prot hist rppa",
+  # "gnndrug exp prot rppa",
+  # "gnndrug exp rppa prot",
   # "gnndrug mirna metab hist rppa",
-  # "gnndrug mut cnv exp prot mirna metab hist rppa",
-  # "gnndrug cnv exp prot mirna metab hist rppa"
-  "drug mut exp",
-  "drug cnv exp",
-  "drug exp prot",
-  "drug exp rppa",
-  "drug exp hist",
-  "drug exp metab",
-  "drug exp mirna",
-  "drug prot rppa",
-  "drug cnv prot",
-  "drug mut cnv",
-  "drug mirna metab",
-  "drug metab hist",
-  "drug metab rppa",
-  "drug mut exp cnv",
-  "drug mut cnv exp",
-  "drug mut cnv exp prot",
-  "drug cnv exp prot",
-  "drug exp rppa prot",
-  "drug exp rppa hist prot",
-  "drug mirna metab hist rppa",
-  "drug mut cnv exp prot mirna metab hist rppa",
-  "drug cnv exp prot mirna metab hist rppa"
+  # "gnndrug mut cnv exp prot"
+  # "gnndrug mut cnv exp prot mirna metab hist rppa"
+  
+  # "gnndrug mut cnv exp",
+  
+  # "gnndrug cnv exp prot metab"
+  # "drug cnv exp prot metab"
+  
+  # "drug mut cnv exp",
+  # "drug mut cnv exp prot",
+  # "drug cnv exp prot",
+  # "drug exp rppa prot",
+  # "drug exp rppa hist prot",
+  # "drug mirna metab hist rppa",
+  # "drug mut cnv exp prot mirna metab hist rppa",
+  # "drug cnv exp prot mirna metab hist rppa"
+  
+  # "gnndrug mut prot",
+  # "gnndrug mut mirna",
+  # "gnndrug mut metab",
+  # "gnndrug mut hist",
+  # "gnndrug mut rppa",
+  # "gnndrug cnv mirna",
+  # "gnndrug cnv metab",
+  # "gnndrug cnv hist",
+  # "gnndrug cnv rppa",
+  # "gnndrug prot mirna",
+  # "gnndrug prot metab",
+  # "gnndrug prot hist",
+  "gnndrug mirna hist",
+  "gnndrug mirna rppa",
+  "gnndrug hist rppa",
+  
+  # "drug mut prot",
+  # "drug mut mirna",
+  # "drug mut metab",
+  # "drug mut hist",
+  # "drug mut rppa",
+  # "drug cnv mirna",
+  "drug cnv metab",
+  # "drug cnv hist",
+  # "drug cnv rppa",
+  # "drug prot mirna",
+  # "drug prot metab",
+  # "drug prot hist",
+  # "drug mirna hist",
+  # "drug mirna rppa",
+  # "drug hist rppa",
+  # 
+  # "drug mut exp",
+  # "drug cnv exp",
+  # "drug exp prot",
+  # "drug exp rppa",
+  # "drug exp hist",
+  # "drug exp metab",
+  # "drug exp mirna",
+  # "drug prot rppa",
+  # "drug cnv prot",
+  # "drug mut cnv",
+  # "drug mirna metab",
+  # "drug metab hist",
+  # "drug metab rppa"
+  
   
   # "gnndrug exp",
-  # "gnndrug mut",
-  # "gnndrug cnv",
-  # "gnndrug prot",
-  # "gnndrug mirna",
+  "gnndrug mut",
+  "gnndrug cnv",
+  "gnndrug prot",
+  "gnndrug mirna"
   # "gnndrug metab",
   # "gnndrug hist",
   # "gnndrug rppa"
-  
+  # 
   # "drug exp",
   # "drug mut",
   # "drug cnv",
   # "drug prot",
   # "drug mirna",
-  # "drug metab",
+  # "drug metab"
   # "drug hist",
   # "drug rppa"
+  
+  # "gnndrug mut exp hist",
+  # "gnndrug cnv exp hist",
+  # "gnndrug exp prot hist",
+  # "gnndrug exp mirna hist",
+  # "gnndrug exp metab hist",
+  # "gnndrug exp hist rppa"
+  # "gnndrug cnv exp metab"
   
   )
 # ${TRAIN_FILE} ${N_FOLDS} ${DATA_TYPES} ${NAME_TAG} ${SUBSET_TYPE} ${STRATIFY} ${FULL} ${ENCODER_TRAIN}
@@ -77,48 +127,67 @@ for (combo in all_combos) {
   } else if (combo == "gnndrug prot" | combo == "drug prot") {
     GPU_PER_TRIAL <- "0.5"
     # NUM_SAMPLES <- "32"
-  } else if (combo  == "gnndrug exp" | combo == "gnndrug exp prot" | combo  == "drug exp" | combo == "drug exp prot") {
+  } else if (combo  == "gnndrug exp" |
+             combo == "gnndrug exp prot" |
+             combo == "gnndrug mut" |
+             combo == "drug mut" |
+             combo  == "drug exp" | combo == "drug exp prot") {
     GPU_PER_TRIAL <- "0.5"
     # NUM_SAMPLES <- "8"
-  } else if (combo == "gnndrug mirna" | combo == "gnndrug metab" | combo == "gnndrug hist" | combo == "gnndrug rppa" |
-             combo == "drug mirna" | combo == "drug metab" | combo == "drug hist" | combo == "drug rppa") {
+  } else if (combo == "gnndrug mirna" |
+             combo == "gnndrug metab" |
+             combo == "gnndrug hist" | combo == "gnndrug rppa" |
+             combo == "drug mirna" |
+             combo == "drug metab" |
+             combo == "drug hist" | combo == "drug rppa") {
     GPU_PER_TRIAL <- "0.2"
     # NUM_SAMPLES <- "40"
   } else {
     GPU_PER_TRIAL <- "1"
     # NUM_SAMPLES <- "8"
   }
-  # 
-  LOSS_TYPE = "rmse"
-  loss_type_name = "RMSELoss"
+  
+  # LOSS_TYPE = "rmse"
+  # loss_type_name = "RMSELoss"
   # LOSS_TYPE = "weighted_rmse"
   # loss_type_name = "WeightedRMSELoss"
   
-  for (ONE_HOT_DRUGS in c("0", "1")) {
-    if (ONE_HOT_DRUGS == "1") {
-      one_hot_drugs_name = "OneHotDrugs"
+  for (LOSS_TYPE in c("rmse", "weighted_rmse")) {
+    if (LOSS_TYPE == "rmse") {
+      loss_type_name = "RMSELoss"
     } else {
-      if (grepl("gnndrug", combo) == TRUE) {
-        one_hot_drugs_name = "GNNDrugs"
-      } else {
-        one_hot_drugs_name = "MorganDrugs"
-      }
+      loss_type_name = "WeightedRMSELoss"
     }
-    for (MERGE_METHOD in c("sum", "concat", "lmf")) {
-      if (MERGE_METHOD == "sum") {
-        merge_method_name = "MergeBySum"
-      } else if (MERGE_METHOD == "concat") {
-        merge_method_name = "MergeByConcat"
-      } else if (MERGE_METHOD == "lmf") {
-        merge_method_name = "MergeByLMF"
+    for (ONE_HOT_DRUGS in c("0", "1")) {
+      if (ONE_HOT_DRUGS == "1") {
+        one_hot_drugs_name = "OneHotDrugs"
+      } else {
+        if (grepl("gnndrug", combo) == TRUE) {
+          one_hot_drugs_name = "GNNDrugs"
+        } else {
+          one_hot_drugs_name = "MorganDrugs"
+        }
       }
-      for (BOTTLENECK in c("0", "1")) {
-        for (TRAIN_FILE in c("CTRP_AAC_MORGAN_1024.hdf")) {
-        # for (TRAIN_FILE in c("CTRP_AAC_SMILES.txt", "GDSC1_AAC_SMILES.txt", "GDSC2_AAC_SMILES.txt")) {
-        # for (TRAIN_FILE in c("CTRP_AAC_MORGAN_1024.hdf", "GDSC1_AAC_MORGAN_1024.hdf", "GDSC2_AAC_MORGAN_1024.hdf")) {
-        # for (TRAIN_FILE in c("CTRP_AAC_SMILES.txt")) {
+      for (MERGE_METHOD in c("sum", "concat", "lmf")) {
+        if (MERGE_METHOD == "sum") {
+          merge_method_name = "MergeBySum"
+        } else if (MERGE_METHOD == "concat") {
+          merge_method_name = "MergeByConcat"
+        } else if (MERGE_METHOD == "lmf") {
+          merge_method_name = "MergeByLMF"
+        }
+        for (BOTTLENECK in c("0", "1")) {
+          # for (TRAIN_FILE in c("CTRP_AAC_MORGAN_1024.hdf")) {
+          # for (TRAIN_FILE in c("CTRP_AAC_SMILES.txt", "GDSC1_AAC_SMILES.txt", "GDSC2_AAC_SMILES.txt")) {
+          # for (TRAIN_FILE in c("CTRP_AAC_MORGAN_1024.hdf", "GDSC1_AAC_MORGAN_1024.hdf", "GDSC2_AAC_MORGAN_1024.hdf")) {
+          # for (TRAIN_FILE in c("CTRP_AAC_SMILES.txt")) {
+          if (grepl("gnn", combo)) {
+            TRAIN_FILE = "CTRP_AAC_SMILES.txt"
+          } else {
+            TRAIN_FILE = "CTRP_AAC_MORGAN_1024.hdf"
+          }
           train_set_name <- "CTRP"
-          for (SUBSET_TYPE in c("cell_line", "drug", "both")) {
+          for (SUBSET_TYPE in c("cell_line", "drug", "lineage", "both")) {
             if (SUBSET_TYPE == "both") {
               N_FOLDS <- "5"
             } else {
@@ -143,7 +212,22 @@ for (combo in all_combos) {
                   pretrain <- "WithTCGAPretrain"
                 }
                 
-                NAME_TAG <- paste("HyperOpt_DRP", train_set_name, full, encoder, "Split", split, bottleneck, pretrain, merge_method_name, loss_type_name, one_hot_drugs_name, data_types, sep = "_")
+                NAME_TAG <-
+                  paste(
+                    "HyperOpt_DRP",
+                    train_set_name,
+                    full,
+                    encoder,
+                    "Split",
+                    split,
+                    bottleneck,
+                    pretrain,
+                    merge_method_name,
+                    loss_type_name,
+                    one_hot_drugs_name,
+                    data_types,
+                    sep = "_"
+                  )
                 
                 cur_grid <- data.table(
                   TRAIN_FILE = TRAIN_FILE,
@@ -165,7 +249,6 @@ for (combo in all_combos) {
                 all_grids <- append(all_grids, list(cur_grid))
                 
               } else {
-                
                 if (grepl("cnv", combo) | grepl("exp", combo)) {
                   for (PRETRAIN in c("0", "1")) {
                     cur_encoder_train <- "1"
@@ -185,7 +268,22 @@ for (combo in all_combos) {
                       pretrain <- "WithTCGAPretrain"
                     }
                     
-                    NAME_TAG <- paste("HyperOpt_DRP", train_set_name, full, encoder, "Split", split, bottleneck, pretrain, merge_method_name, loss_type_name, one_hot_drugs_name, data_types, sep = "_")
+                    NAME_TAG <-
+                      paste(
+                        "HyperOpt_DRP",
+                        train_set_name,
+                        full,
+                        encoder,
+                        "Split",
+                        split,
+                        bottleneck,
+                        pretrain,
+                        merge_method_name,
+                        loss_type_name,
+                        one_hot_drugs_name,
+                        data_types,
+                        sep = "_"
+                      )
                     
                     cur_grid <- data.table(
                       TRAIN_FILE = TRAIN_FILE,
@@ -222,7 +320,22 @@ for (combo in all_combos) {
                   cur_pretrain <- "0"
                   pretrain <- "NoTCGAPretrain"
                   
-                  NAME_TAG <- paste("HyperOpt_DRP", train_set_name, full, encoder, "Split", split, bottleneck, pretrain, merge_method_name, loss_type_name, one_hot_drugs_name, data_types, sep = "_")
+                  NAME_TAG <-
+                    paste(
+                      "HyperOpt_DRP",
+                      train_set_name,
+                      full,
+                      encoder,
+                      "Split",
+                      split,
+                      bottleneck,
+                      pretrain,
+                      merge_method_name,
+                      loss_type_name,
+                      one_hot_drugs_name,
+                      data_types,
+                      sep = "_"
+                    )
                   
                   cur_grid <- data.table(
                     TRAIN_FILE = TRAIN_FILE,
@@ -253,6 +366,25 @@ for (combo in all_combos) {
 }
 all_param_combos <- rbindlist(all_grids)
 
+
+# ==== Bi-Modal split by DRUG (ALL) ====
+combos <- all_param_combos[PRETRAIN == 0 & SUBSET_TYPE == "drug" & MERGE_METHOD == "concat" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+# combos <- all_param_combos[PRETRAIN == 0 & SUBSET_TYPE == "drug" & MERGE_METHOD == "lmf" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- all_param_combos[PRETRAIN == 0 & SUBSET_TYPE == "drug" & MERGE_METHOD == "concat" & LOSS_TYPE == "rmse" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+# fwrite(combos, "DRP/slurm/grids/drp_cv_split_by_DRUG_grid.csv", col.names = F)
+# fwrite(combos, "DRP/slurm/grids/drp_cv_lmf_split_by_DRUG_grid.csv", col.names = F)
+# fwrite(combos, "DRP/slurm/grids/drp_validate_lmf_split_by_DRUG_grid.csv", col.names = F)
+fwrite(combos, "DRP/slurm/grids/drp_validate_split_by_DRUG_grid.csv", col.names = F)
+
+# ==== Bi-Modal split by CELL_LINE (ALL) ====
+combos <- all_param_combos[PRETRAIN == 0 & SUBSET_TYPE == "cell_line" & (MERGE_METHOD == "concat" | MERGE_METHOD == "lmf") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_cv_split_by_CELL_LINE_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & SUBSET_TYPE == "cell_line" & (MERGE_METHOD == "concat" | MERGE_METHOD == "lmf") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+# fwrite(combos, "DRP/slurm/grids/drp_validate_split_by_CELL_LINE_grid.csv", col.names = F)
+
 # ==== (GDSC) Bi-modal with GNN + LMF ====
 combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
@@ -262,7 +394,7 @@ fwrite(combos, "DRP/slurm/drp_opt_gdsc_grid.csv", col.names = F)
 combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
 fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_grid.csv", col.names = F)
-combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "drug") & LOSS_TYPE == "rmse" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
 fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_cell_line_drug_grid.csv", col.names = F)
 
@@ -276,22 +408,32 @@ combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
 fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_with_lds_cell_line_drug_grid.csv", col.names = F)
 
 # ==== Bi-modal Baseline + LMF (Morgan + LMF + RMSE) ====
-# combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
-# combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
-# fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0 & LOSS_TYPE == "rmse"]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_with_lmf_grid.csv", col.names = F)
 # combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
-combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & SUBSET_TYPE != "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0 & LOSS_TYPE == "rmse"]
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
 fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_with_lmf_cell_line_drug_grid.csv", col.names = F)
 
-# ==== Bi-modal Baseline + GNN (GNN + concat + RMSE) ====
-# combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
-# combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
-# fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_grid.csv", col.names = F)
+# ==== Bi-modal Baseline + LMF (Morgan + LMF + RMSE) ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "sum") & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0 & LOSS_TYPE == "rmse"]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_with_sum_grid.csv", col.names = F)
 # combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
-combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "sum") & SUBSET_TYPE != "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0 & LOSS_TYPE == "rmse"]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_with_sum_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Bi-modal Baseline + GNN (GNN + concat + RMSE) ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0 & LOSS_TYPE == "rmse"]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_with_gnn_grid.csv", col.names = F)
+# combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & SUBSET_TYPE != "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0 & LOSS_TYPE == "rmse"]
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
 fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_with_gnn_cell_line_drug_grid.csv", col.names = F)
+# fwrite(combos, "DRP/slurm/grids/drp_opt_baseline_with_gnn_cell_line_drug_grid_extra.csv", col.names = F)
 
 
 # ==== Bi-modal with GNN + LMF but no LDS ====
@@ -302,21 +444,13 @@ combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & (SUBSET_TYP
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
 fwrite(combos, "DRP/slurm/drp_opt_noLDS_cell_line_drug_grid.csv", col.names = F)
 
-# ==== Bi-modal with Morgan Drugs (LMF + LDS) ====
-combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
-combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
-fwrite(combos, "DRP/slurm/drp_opt_morgan_grid.csv", col.names = F)
-combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
-combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
-fwrite(combos, "DRP/slurm/drp_opt_morgan_cell_line_drug_grid.csv", col.names = F)
-
 # ==== Bi-modal GNN + Concatenation (non-LMF) ====
-combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "weighted_rmse" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
-fwrite(combos, "DRP/slurm/drp_opt_concat_grid.csv", col.names = F)
+fwrite(combos, "DRP/slurm/grids/drp_opt_concat_grid.csv", col.names = F)
 combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
-fwrite(combos, "DRP/slurm/drp_opt_concat_cell_line_drug_grid.csv", col.names = F)
+fwrite(combos, "DRP/slurm/grids/drp_opt_concat_cell_line_drug_grid.csv", col.names = F)
 # combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & SUBSET_TYPE == "drug" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
 # combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
 # fwrite(combos, "DRP/slurm/drp_opt_concat_drug_grid.csv", col.names = F)
@@ -338,25 +472,163 @@ combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & (SUBSET_TYP
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
 fwrite(combos, "DRP/slurm/grids/drp_opt_bi_lmf_lds_cell_line_drug_grid.csv", col.names = F)
 
-# ==== Bi-modal MORGAN + LMF + LDS But only cell or drug splitting ====
-# combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & SUBSET_TYPE == "cell_line" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
-# combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
-# fwrite(combos, "DRP/slurm/drp_opt_bi_lmf_lds_cell_line_grid.csv", col.names = F)
-# combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & SUBSET_TYPE == "drug" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
-# combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
-# fwrite(combos, "DRP/slurm/drp_opt_bi_lmf_lds_drug_grid.csv", col.names = F)
-
-
-# ==== Multi-modal GNN + LMF + LDS (trifecta) ====
-combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+# ==== Bi-modal GNN + LMF without LDS (trifecta - LDS) ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "rmse" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
-fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_trifecta_grid.csv", col.names = F)
+fwrite(combos, "DRP/slurm/grids/drp_opt_bi_trifecta_without_lds_grid.csv", col.names = F)
+# combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+
+# ==== Bi-modal LDS + GNN without LMF (trifecta - LMF) ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & LOSS_TYPE == "weighted_rmse" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_bi_trifecta_without_lds_grid.csv", col.names = F)
+# combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+
+# ==== Bi-modal LMF + LDS without GNN ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" &
+                             SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_morgan_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & (SUBSET_TYPE == "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_morgan_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Bi-modal Trifecta ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_bimodal_trifecta_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE == "drug" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_bimodal_trifecta_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Bi-Modal Bottleneck (Cell Line Splitting/Grouping) ====
+baseline_combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" &
+                                      TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE == "cell_line" &
+                                      BOTTLENECK == 1 & FULL == 1 & ONE_HOT_DRUGS == 0]
+baseline_combos <- baseline_combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(baseline_combos, "DRP/slurm/grids/drp_opt_bimodal_baseline_bottleneck_cell_line_grid.csv", col.names = F)
+
+trifecta_combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" &
+                                      TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE == "cell_line" &
+                                      BOTTLENECK == 1 & FULL == 1 & ONE_HOT_DRUGS == 0]
+trifecta_combos <- trifecta_combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(trifecta_combos, "DRP/slurm/grids/drp_opt_bimodal_trifecta_bottleneck_cell_line_grid.csv", col.names = F)
+
+
+# ==== Tri-modal Trifecta (initial) ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_trimodal_trifecta_other_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & DATA_TYPES %like% "gnn" & LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE == "cell_line" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_trimodal_trifecta_other_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Tri-modal Trifecta (remainders) ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_trimodal_trifecta_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & (SUBSET_TYPE == "cell_line" | SUBSET_TYPE == "cell_line") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_trimodal_trifecta_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Tri-modal Trifecta, split by lineage ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE == "lineage" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_trimodal_trifecta_lineage_grid.csv", col.names = F)
+
+# ==== Tri-modal baseline (remainders) ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_trimodal_baseline_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE != "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_trimodal_baseline_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Tri-modal baseline (remainders) ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_trimodal_baseline_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE != "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_trimodal_baseline_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Tri-Modal Bottleneck (Cell Line Splitting/Grouping) ====
+baseline_combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" &
+                                      TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE == "cell_line" &
+                                      BOTTLENECK == 1 & FULL == 1 & ONE_HOT_DRUGS == 0]
+baseline_combos <- baseline_combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(baseline_combos, "DRP/slurm/grids/drp_opt_trimodal_baseline_bottleneck_cell_line_grid.csv", col.names = F)
+
+trifecta_combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" &
+                                      TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE == "cell_line" &
+                                      BOTTLENECK == 1 & FULL == 1 & ONE_HOT_DRUGS == 0]
+trifecta_combos <- trifecta_combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(trifecta_combos, "DRP/slurm/grids/drp_opt_trimodal_trifecta_bottleneck_cell_line_grid.csv", col.names = F)
+
+# EXP_HIST
+# MIRNA_RPPA
+# ==== Multi-modal Trifecta with EXP_HIST ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_exp_hist_trifecta_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") &  LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE != "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_exp_hist_trifecta_cell_line_drug_grid.csv", col.names = F)
+# ==== Multi-modal Trifecta with CNV_EXP_METAB ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+combos$GPU_PER_TRIAL <- 0.5
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_cnv_exp_metab_trifecta_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") &  LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE != "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+combos$GPU_PER_TRIAL <- 0.5
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_cnv_exp_metab_trifecta_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Multi-modal Trifecta with CNV_EXP_PROT_METAB ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+combos$GPU_PER_TRIAL <- 1
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_cnv_exp_metab_trifecta_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") &  LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+combos$GPU_PER_TRIAL <- 1
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_cnv_exp_prot_metab_trifecta_cell_line_drug_grid.csv", col.names = F)
 
 # ==== Multi-modal Baseline ====
-combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
 combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
 fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_baseline_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE != "cell_line" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_baseline_cell_line_drug_grid.csv", col.names = F)
 
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_baseline_all_grid.csv", col.names = F)
+
+# ==== Multi-modal Baseline + LMF ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_baseline_with_lmf_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE != "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_baseline_with_lmf_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Multi-modal Baseline + LDS ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_baseline_with_lds_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "rmse" & TRAIN_FILE == "CTRP_AAC_MORGAN_1024.hdf" & SUBSET_TYPE != "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_baseline_with_lmf_cell_line_drug_grid.csv", col.names = F)
+
+# ==== Multi-modal GNN + LMF + LDS (trifecta) ====
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_trifecta_grid.csv", col.names = F)
+combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") &  LOSS_TYPE == "weighted_rmse" & TRAIN_FILE == "CTRP_AAC_SMILES.txt" & SUBSET_TYPE != "lineage" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+combos <- combos[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_multimodal_trifecta_cell_line_drug_grid.csv", col.names = F)
 
 table(all_param_combos$DATA_TYPES)
 all_param_combos[PRETRAIN == 0]
@@ -398,21 +670,62 @@ colnames(all_param_combos)
 # "TRAIN_FILE"    "GPU_PER_TRIAL" "NUM_SAMPLES"   "N_FOLDS"       "DATA_TYPES"    "NAME_TAG"      "SUBSET_TYPE"   "STRATIFY"      "BOTTLENECK"   
 # "FULL"          "ENCODER_TRAIN" "PRETRAIN" "MERGE_METHOD"  "LOSS_TYPE"  "ONE_HOT_DRUGS"
 # ==== CV Grid ====
-require(data.table)
-cur_opt_grid <- fread("DRP/slurm/drp_opt_grid.csv")
-# ${TRAIN_FILE} ${N_FOLDS}   ${DATA_TYPES}  ${NAME_TAG}  ${SUBSET_TYPE}  ${STRATIFY}  ${FULL} ${ENCODER_TRAIN}
-cur_cv_grid <- unique(cur_opt_grid[, c(1, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15)])
-fwrite(cur_cv_grid, "DRP/slurm/drp_cv_grid.csv", col.names = F)
+# require(data.table)
+# cur_opt_grid <- fread("DRP/slurm/drp_opt_grid.csv")
+# # ${TRAIN_FILE} ${N_FOLDS}   ${DATA_TYPES}  ${NAME_TAG}  ${SUBSET_TYPE}  ${STRATIFY}  ${FULL} ${ENCODER_TRAIN}
+# cur_cv_grid <- unique(cur_opt_grid[, c(1, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15)])
+# fwrite(cur_cv_grid, "DRP/slurm/drp_cv_grid.csv", col.names = F)
+# 
+# cur_cv_grid[V6 %like% ".*ResponseOnly.*"]
+# fwrite(cur_cv_grid[V6 %like% ".*ResponseOnly.*" & V5 != "drug cnv" & V15 == 0], "DRP/slurm/drp_cv_grid.csv", col.names = F)
+# fwrite(cur_cv_grid[!(V6  %like% ".*ResponseOnly.*" & V5 == "drug cnv")], "DRP/slurm/drp_cv_grid.csv", col.names = F)
+# fwrite(cur_cv_grid[!(V6  %like% ".*ResponseOnly.*" & V5 == "drug cnv") & !(V6 %like% "OneHotDrugs")], "DRP/slurm/drp_infer_grid.csv", col.names = F)
+# 
+# cur_cv_grid <- fread("DRP/slurm/drp_cv_grid.csv")
+# cur_cv_grid$V1 <- gsub(pattern = "CTRP", replacement = "GDSC2", cur_cv_grid$V1)
+# cur_cv_grid$V4 <- gsub(pattern = "CTRP", replacement = "GDSC2", cur_cv_grid$V4)
+# 
+# 
+# 
+# fwrite(cur_cv_grid, "DRP/slurm/drp_cv_grid.csv", col.names = F)
 
-cur_cv_grid[V6 %like% ".*ResponseOnly.*"]
-fwrite(cur_cv_grid[V6 %like% ".*ResponseOnly.*" & V5 != "drug cnv" & V15 == 0], "DRP/slurm/drp_cv_grid.csv", col.names = F)
-fwrite(cur_cv_grid[!(V6  %like% ".*ResponseOnly.*" & V5 == "drug cnv")], "DRP/slurm/drp_cv_grid.csv", col.names = F)
-fwrite(cur_cv_grid[!(V6  %like% ".*ResponseOnly.*" & V5 == "drug cnv") & !(V6 %like% "OneHotDrugs")], "DRP/slurm/drp_infer_grid.csv", col.names = F)
+# Remaining CV Runs ====
+cnv_metab_base <- all_param_combos[DATA_TYPES == "drug cnv metab" & PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "rmse" &
+                               SUBSET_TYPE == "cell_line" & BOTTLENECK == 1 & FULL == 0 & ONE_HOT_DRUGS == 0]
+cnv_sum_lds_gnn <- all_param_combos[DATA_TYPES == "gnndrug cnv" & PRETRAIN == 0 & (MERGE_METHOD == "sum") & LOSS_TYPE == "weighted_rmse" &
+                                      SUBSET_TYPE == "cell_line" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+cnv_lmf_base_gnn <- all_param_combos[DATA_TYPES == "gnndrug cnv" & PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "rmse" &
+                                      SUBSET_TYPE == "drug" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+hist_rppa_trifecta <- all_param_combos[DATA_TYPES == "gnndrug hist rppa" & PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" &
+                                         SUBSET_TYPE %in% c("cell_line", "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+mirna_hist_trifecta <- all_param_combos[DATA_TYPES == "gnndrug mirna hist" & PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" &
+                                         SUBSET_TYPE %in% c("cell_line") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+mirna_lmf_base_gnn <- all_param_combos[DATA_TYPES == "gnndrug mirna" & PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "rmse" &
+                                       SUBSET_TYPE == "drug" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+mirna_rppa_trifecta <- all_param_combos[DATA_TYPES == "gnndrug mirna rppa" & PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" &
+                                         SUBSET_TYPE %in% c("cell_line", "drug") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+mut_cnv_trifecta <- all_param_combos[DATA_TYPES == "gnndrug mut cnv" & PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" &
+                                         SUBSET_TYPE %in% c("both") & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+mut_base_lds_gnn <- all_param_combos[DATA_TYPES == "gnndrug mut" & PRETRAIN == 0 & (MERGE_METHOD == "concat") & LOSS_TYPE == "weighted_rmse" &
+                                       SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+prot_lmf_base_gnn <- all_param_combos[DATA_TYPES == "gnndrug prot" & PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "rmse" &
+                                       SUBSET_TYPE == "drug" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
 
-cur_cv_grid <- fread("DRP/slurm/drp_cv_grid.csv")
-cur_cv_grid$V1 <- gsub(pattern = "CTRP", replacement = "GDSC2", cur_cv_grid$V1)
-cur_cv_grid$V4 <- gsub(pattern = "CTRP", replacement = "GDSC2", cur_cv_grid$V4)
+stragglers <- rbindlist(
+  list(
+    cnv_metab_base,
+    cnv_sum_lds_gnn,
+    cnv_lmf_base_gnn,
+    hist_rppa_trifecta,
+    mirna_hist_trifecta,
+    mirna_lmf_base_gnn,
+    mirna_rppa_trifecta,
+    mut_cnv_trifecta,
+    mut_base_lds_gnn,
+    prot_lmf_base_gnn
+  )
+)
 
-
-
-fwrite(cur_cv_grid, "DRP/slurm/drp_cv_grid.csv", col.names = F)
+# combos <- all_param_combos[PRETRAIN == 0 & (MERGE_METHOD == "lmf") & LOSS_TYPE == "weighted_rmse" & SUBSET_TYPE == "both" & BOTTLENECK == 0 & FULL == 0 & ONE_HOT_DRUGS == 0]
+stragglers <- stragglers[, !c("ENCODER_TRAIN", "ONE_HOT_DRUGS")]
+fwrite(combos, "DRP/slurm/grids/drp_opt_stragglers.csv", col.names = F)

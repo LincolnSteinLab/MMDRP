@@ -4,6 +4,9 @@ require(data.table)
 require(ggplot2)
 options(scipen = 3)
 
+drug_info <- fread("Data/DRP_Training_Data/CTRP_DRUG_INFO.csv")
+targeted_drugs <- drug_info[gene_symbol_of_protein_target != "" & cpd_status == "clinical"]$rn
+
 cur_cv_files <- list.files("Data/CV_Results/", recursive = T,
                             pattern = ".*final_validation.*", full.names = T)
 
@@ -45,8 +48,19 @@ long_results <- melt(unique(all_results[, c("data_types", "merge_method", "loss_
 
 
 long_results[, cv_mean := mean(value), by = c("data_types", "merge_method", "loss_type", "split_method")]
+# split_both_results <- long_results[split_method == "BOTH"]
+# split_drug_results <- long_results[split_method == "DRUG"]
+baseline_with_lds_results <- long_results[(merge_method == "Concat" & drug_type == "DRUG")]
 
-ggplot(long_results) +
+targeted_drug_results <- all_results[cpd_name %in% targeted_drugs]
+targeted_drug_results[, loss_by_config := mean(RMSELoss), by = c("data_types", "merge_method", "loss_type", "drug_type", "split_method", "fold")]
+long_targeted_drug_results <- melt(unique(targeted_drug_results[, c("data_types", "merge_method", "loss_type", "drug_type", "split_method", "fold", "loss_by_config")]),
+                     id.vars = c("data_types", "merge_method", "loss_type", "drug_type", "split_method", "fold"))
+long_targeted_drug_results[, cv_mean := mean(value), by = c("data_types", "merge_method", "loss_type", "split_method")]
+
+baseline_with_lds_targeted <- long_targeted_drug_results[(merge_method == "Concat" & drug_type == "DRUG")]
+
+ggplot(baseline_with_lds_targeted) +
   geom_bar(mapping = aes(x = data_types, y = value, fill = fold), stat = "identity", position='dodge') +
   facet_wrap(~merge_method+loss_type+drug_type+split_method, nrow = 2) + 
   scale_fill_discrete(name = "CV Fold:") +
@@ -65,12 +79,17 @@ ggplot(long_results) +
 
   
 dir.create("Plots/CV_Results/")
-ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_Full_Comparison.pdf")
+# ggsave(filename = "Plots/CV_Results/Bimodal_CV_split_BOTH_per_fold_Full_Comparison.pdf")
+# ggsave(filename = "Plots/CV_Results/Bimodal_CV_split_DRUG_per_fold_Full_Comparison.pdf")
+ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_Baseline_with_LDS_Full_Comparison.pdf")
 
 # = Upper AAC Comparison ====
 temp_results <- all_results
 temp_results$loss_by_config <- NULL
 temp_results <- temp_results[target > 0.7]
+
+temp_results <- temp_results[(merge_method == "Concat" & drug_type == "DRUG")]
+
 temp_results[, loss_by_config := mean(RMSELoss), by = c("data_types", "merge_method", "loss_type", "drug_type", "split_method", "fold")]
 
 long_temp_results <- melt(unique(temp_results[, c("data_types", "merge_method", "loss_type", "drug_type", "split_method", "fold", "loss_by_config")]),
@@ -78,6 +97,8 @@ long_temp_results <- melt(unique(temp_results[, c("data_types", "merge_method", 
 
 
 long_temp_results[, cv_mean := mean(value), by = c("data_types", "merge_method", "loss_type", "split_method")]
+# split_both_results <- long_temp_results[split_method == "BOTH"]
+# split_drug_results <- long_temp_results[split_method == "DRUG"]
 
 ggplot(long_temp_results) +
   geom_bar(mapping = aes(x = data_types, y = value, fill = fold), stat = "identity", position='dodge') +
@@ -94,12 +115,17 @@ ggplot(long_temp_results) +
                     ymin=cv_mean, col='red'), linetype=2, show.legend = FALSE) +
   geom_text(aes(x=data_types, label = round(cv_mean, 3), y = cv_mean), vjust = -0.5) 
 
-ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_Upper_0.7_Comparison.pdf")
+# ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_split_BOTH_Upper_0.7_Comparison.pdf")
+# ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_split_DRUG_Upper_0.7_Comparison.pdf")
+ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_Baseline_with_LDS_Upper_0.7_Comparison.pdf")
 
 # = Upper AAC (0.9) Comparison ====
 temp_results <- all_results
 temp_results$loss_by_config <- NULL
 temp_results <- temp_results[target > 0.9]
+
+temp_results <- temp_results[(merge_method == "Concat" & drug_type == "DRUG")]
+
 temp_results[, loss_by_config := mean(RMSELoss), by = c("data_types", "merge_method", "loss_type", "drug_type", "split_method", "fold")]
 
 long_temp_results <- melt(unique(temp_results[, c("data_types", "merge_method", "loss_type", "drug_type", "split_method", "fold", "loss_by_config")]),
@@ -107,6 +133,8 @@ long_temp_results <- melt(unique(temp_results[, c("data_types", "merge_method", 
 
 
 long_temp_results[, cv_mean := mean(value), by = c("data_types", "merge_method", "loss_type", "split_method")]
+# split_both_results <- long_temp_results[split_method == "BOTH"]
+# split_drug_results <- long_temp_results[split_method == "DRUG"]
 
 ggplot(long_temp_results) +
   geom_bar(mapping = aes(x = data_types, y = value, fill = fold), stat = "identity", position='dodge') +
@@ -122,4 +150,6 @@ ggplot(long_temp_results) +
                     ymax=cv_mean, 
                     ymin=cv_mean, col='red'), linetype=2, show.legend = FALSE) +
   geom_text(aes(x=data_types, label = round(cv_mean, 3), y = cv_mean), vjust = -0.5) 
-ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_Upper_0.9_Comparison.pdf")
+# ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_split_BOTH_Upper_0.9_Comparison.pdf")
+# ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_split_DRUG_Upper_0.9_Comparison.pdf")
+ggsave(filename = "Plots/CV_Results/Bimodal_CV_per_fold_Baseline_with_LDS_Upper_0.9_Comparison.pdf")

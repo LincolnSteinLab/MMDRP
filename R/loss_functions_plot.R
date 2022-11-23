@@ -8,7 +8,7 @@ plot_activation_function <- function(f, title, range, target){
     geom_vline(xintercept=0, colour='red', alpha=1/4) +
     stat_function(fun=f, colour = "dodgerblue3",) +
     ggtitle(title) +
-    theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle=45, hjust = 1)) +
+    theme(text = element_text(size = 16), plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle=45, hjust = 1)) +
     xlab("Prediction") + ylab("Loss") +
     scale_x_continuous(breaks=c(0, target, 0.25, 0.5, 0.75, 1))
 }
@@ -21,7 +21,10 @@ plot_all_activation_functions <- function(f1, f2, f3, title, range, target){
     stat_function(fun=f2, aes(colour = "MAE")) +
     stat_function(fun=f3, aes(colour = "RMSE")) +
     ggtitle(title) +
-    theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle=45, hjust = 1)) +
+    theme(text = element_text(size = 18, face = "bold"),
+          plot.title = element_text(hjust = 0.5),
+          axis.text.x = element_text(angle=45, hjust = 1),
+          legend.position = "top") +
     xlab("Prediction") + ylab("Loss") +
     scale_x_continuous(breaks=c(0, target, 0.25, 0.5, 0.75, 1)) +
     scale_colour_manual("", 
@@ -41,7 +44,7 @@ p_mae <- plot_activation_function(mae, 'MAE', c(0,1), 0)
 rmse <- function(yhats, y=0) {sqrt(((y - yhats) ** 2)/2)}
 p_rmse <- plot_activation_function(rmse, 'RMSE', c(0,1), 0)
 
-plot_all_activation_functions(mse, mae, rmse, 'Overlap of MSE, MAE & RMSE', c(0,1), 0)
+plot_all_activation_functions(mse, mae, rmse, '', c(0,2), 0)
 ggsave("Plots/All_Loss_Functions_Plot.pdf")
 
 p_grid <- cowplot::plot_grid(p_mse, p_mae, p_rmse, ncol = 3)

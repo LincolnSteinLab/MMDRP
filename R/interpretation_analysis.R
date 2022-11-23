@@ -8,6 +8,21 @@ prot_path = "Data/CV_Results/HyperOpt_DRP_ResponseOnly_gnndrug_prot_HyperOpt_DRP
 dir.create("Plots/DRP")
 dir.create("Plots/DRP/Lineage_Results")
 
+targeted_drugs <- c("Idelalisib", "Olaparib", "Venetoclax", "Crizotinib", "Regorafenib", 
+                    "Tretinoin", "Bortezomib", "Cabozantinib", "Dasatinib", "Erlotinib", 
+                    "Sonidegib", "Vandetanib", "Axitinib", "Ibrutinib", "Gefitinib", 
+                    "Nilotinib", "Tamoxifen", "Bosutinib", "Pazopanib", "Lapatinib", 
+                    "Dabrafenib", "Bexarotene", "Temsirolimus", "Belinostat", 
+                    "Sunitinib", "Vorinostat", "Trametinib", "Fulvestrant", "Sorafenib", 
+                    "Vemurafenib", "Alpelisib")
+
+ctrp <- fread("Data/DRP_Training_Data/CTRP_AAC_SMILES.txt")
+
+length(targeted_drugs)
+
+length(unique(ctrp[cpd_name %in% targeted_drugs]$ccl_name))  # 842 cell lines tested with targeted drugs
+length(unique(ctrp[cpd_name %in% targeted_drugs & area_above_curve >= 0.7]$ccl_name))  # 302 of them with AAC >= 0.7
+nrow(unique(ctrp[cpd_name %in% targeted_drugs & area_above_curve >= 0.7]))  # resulting in 395 potential samples
 # Load cell line and interpretation results ===============================
 exp_data <- fread(paste0(exp_path, "integrated_gradients_results.csv"))
 prot_data <- fread(paste0(prot_path, "integrated_gradients_results.csv"))
@@ -16,18 +31,23 @@ cell_line_data <- fread("Data/DRP_Training_Data/DepMap_21Q2_Line_Info.csv")
 # cur_cv <- fread(paste0(path, "CV_results.csv"))
 
 dim(cur_data)
-cur_data[1:5, 1:10]
-max(cur_data[1:5, -c(1:7)])
-cur_data[MSE_loss < 0.01][1:5, 1:5]
-cur_data$MSE_loss[1]
+exp_data[1:5, 1:10]
+max(exp_data[1:5, -c(1:7)])
+exp_data[RMSE_loss < 0.2][1:5, 1:5]
+prot_data[RMSE_loss < 0.1][1:5, 1:5]
+prot_data[RMSE_loss < 0.1][, 1:6]
+cur_data$RMSE_loss[1]
 cur_data$DeepLIFT_delta[1]
 
 exp_data <- merge(exp_data, cell_line_data[, c("stripped_cell_line_name", "lineage")], by.x = "cell_name", by.y = "stripped_cell_line_name")
 prot_data <- merge(prot_data, cell_line_data[, c("stripped_cell_line_name", "lineage")], by.x = "cell_name", by.y = "stripped_cell_line_name")
 
-
+unique(prot_data$cpd_name)
 # cur_data[, total_drug_attrib := sum(.SD), .SDcols = drug_cols, by = ]
-setcolorder(cur_data, 'lineage')
+setcolorder(prot_data, 'lineage')
+prot_data[lineage == "lung" & RMSE_loss < 0.3][, 1:6]
+prot_data[lineage == "lung"][, 1:6]
+setcolorder(exp_data, 'lineage')
 
 cur_data[1:5, 1:10]
 exp_data$V1 <- NULL
