@@ -1,7 +1,7 @@
 # repurposable_drugs_interpretation.R
 require(data.table)
 ctrp <- fread("Data/DRP_Training_Data/CTRP_AAC_SMILES.txt")
-gdsc2 <- fread("Data/DRP_Training_Data/GDSC2_AAC_SMILES.txt")
+# gdsc2 <- fread("Data/DRP_Training_Data/GDSC2_AAC_SMILES.txt")
 get_all_interpret <- function(data_types, split_type) {
   cv_path = paste0("Data/CV_Results/HyperOpt_DRP_ResponseOnly_", data_types, "_HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_", split_type, "_NoBottleNeck_NoTCGAPretrain_MergeByLMF_WeightedRMSELoss_GNNDrugs_", data_types, "/")
   interpret_paths = list.files(path = cv_path, pattern = ".*final_interpretation.*", full.names = T)
@@ -64,7 +64,7 @@ get_expression_in_cell_line <- function(data_type, cell_line_name, variable_name
 # keytypes(get(organism))
 # org.Hs.eg.db
 
-# ggsave("Plots/Interpretation/IntegratedGradients/GSE/gnndrug_prot_697_Paclitaxel_GSE_bottom_5.pdf", p_bottom_prot, 
+# ggsave("Plots/Interpretation/IntegratedGradients//gnndrug_prot_697_Paclitaxel_GSE_bottom_5.pdf", p_bottom_prot, 
 #        width = 20, units = "in")
 # Find the best re-purposable drugs, perform IntegratedGradients Interpretation
 
@@ -610,115 +610,6 @@ cnv_exp_integ <- get_all_interpret(data_types = "gnndrug_cnv_exp", split_type = 
 ibrutinib_te617t_attrs <- get_top_attrs(cnv_exp_integ, compound_name = "Ibrutinib", cell_line_name = "TE617T")
 ibrutinib_te617t_attrs[variable %like% "BTK"]  # very small value...
 
-### AAC vs EXP/CNV ====
-MUT <- fread("Data/DRP_Training_Data/DepMap_21Q2_Mutations_by_Cell.csv")
-CNV <- fread("Data/DRP_Training_Data/DepMap_21Q2_CopyNumber.csv")
-EXP <- fread("Data/DRP_Training_Data/DepMap_21Q2_Expression.csv")
-
-get_expression_in_cell_line(data_type = "EXP", cell_line_name = "EFM192A", variable_name = "BTK")
-# Expression of BTK is in the 46th percentile (among all cell lines)
-get_expression_in_cell_line(data_type = "CNV", cell_line_name = "EFM192A", variable_name = "BTK")
-# Expression of BTK is in the 46th percentile (among all cell lines)
-get_expression_in_cell_line(data_type = "MUT", cell_line_name = "EFM192A", variable_name = "BTK")
-
-drug_name <- "Ibrutinib"
-gene_name <- "BTK"
-cell_line_name <- "EFM192A"
-# Find expression of BTK in all cell lines that ibrutinib was tested in, plot it against AAC 
-cur_cell_aac <- unique(ctrp[cpd_name == drug_name][, c("ccl_name", "area_above_curve")])
-cur_exp_subset <- EXP[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
-                                                                                      gene_name), with = F]
-exp_aac_subset <- merge(cur_exp_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
-colnames(exp_aac_subset)[2] <- "value"
-
-# Find copy number of BTK in all cell lines that ibrutinib was tested in, plot it against AAC 
-cur_cnv_subset <- CNV[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
-                                                                                      gene_name), with = F]
-cnv_aac_subset <- merge(cur_cnv_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
-colnames(cnv_aac_subset)[2] <- "value"
-
-require(ggplot2)
-require(patchwork)
-p_exp_aac <- ggplot(data = exp_aac_subset) +
-  geom_point(aes(x = area_above_curve, y = value)) +
-  xlab("Area Above Curve") +
-  ylab("Gene Expression") +
-  annotate(geom = "point",
-           x = exp_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve,
-           y = exp_aac_subset[stripped_cell_line_name == cell_line_name]$value,
-           colour = "orange", size = 1) + 
-  annotate(
-    geom = "curve",
-    x = 0.6, y = 2,
-    xend = exp_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve - 0.005,
-    yend = exp_aac_subset[stripped_cell_line_name == cell_line_name]$value + 0.2, 
-    curvature = -.3, arrow = arrow(length = unit(2, "mm"))
-  ) +
-  annotate(geom = "text", x = 0.6, y = 2.3, label = "EFM192A", size = 6,
-           ) +
-  theme(text = element_text(size = 14, face = "bold"))
-
-p_cnv_aac <- ggplot(data = cnv_aac_subset) +
-  geom_point(aes(x = area_above_curve, y = value)) +
-  xlab("Area Above Curve") +
-  ylab("Copy Number") +
-  annotate(geom = "point",
-           x = cnv_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve,
-           y = cnv_aac_subset[stripped_cell_line_name == cell_line_name]$value,
-           colour = "orange", size = 1) + 
-  annotate(
-    geom = "curve",
-    x = 0.6, y = 1.35,
-    xend = cnv_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve - 0.005,
-    yend = cnv_aac_subset[stripped_cell_line_name == cell_line_name]$value + 0.05, 
-    curvature = -.3, arrow = arrow(length = unit(2, "mm"))
-  ) +
-  annotate(geom = "text", x = 0.6, y = 1.4, label = "EFM192A", size = 6, 
-  ) +
-  theme(text = element_text(size = 14, face = "bold"))
-
-
-
-p_exp_aac + p_cnv_aac 
-
-
-ggsave("Plots/Interpretation/BTK_EXP_CNV_vs_AAC.pdf")
-
-# Top positive attributed variables:
-head(ibrutinib_te617t_attrs)
-
-# FGF10 
-# Paper: FGF10/FGFR2 signal induces cell migration and invasion in pancreatic cancer (2008)
-get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "FGF10")
-# ~ 99th percentile
-get_expression_in_cell_line(data_type = "CNV", cell_line_name = "TE617T", variable_name = "FGF10")
-# 24th percentile
-
-# UTS2B, potent vasoconstrictor...
-# Paper: Protein expression of urotensin II, urotensin-related peptide and their receptor in the lungs of patients 
-# with lymphangioleiomyomatosis (2010)
-# ...Urotensin II (UII) and urotensin-related peptide (URP) are vasoactive neuropeptides with wide ranges of action in
-# the normal mammalian lung, including the control of smooth muscle cell proliferation...
-
-# Overexpressed in a bunch of cancers: https://www.proteinatlas.org/ENSG00000188958-UTS2B/pathology
-# Paper: Integrated Genomic Analysis of Hu€rthle Cell Cancer Reveals Oncogenic Drivers, Recurrent Mitochondrial Mutations,
-# and Unique Chromosomal Landscapes (2018) ...overexpressed in thyroid cancer...
-
-get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "UTS2B")
-# ~ 99th percentile
-
-# BMP3
-get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "BMP3")
-# ~ 100th percentile
-# Paper: Bone morphogenic protein 3 inactivation is an early and frequent event in colorectal cancer development (2008)
-# Overexpressed in few cancer types: https://www.proteinatlas.org/ENSG00000152785-BMP3/pathology
-
-# Top negative attributed variables
-tail(ibrutinib_te617t_attrs)
-
-get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "SYPL2")
-# 100th percentile, overexpressed 
-
 ## EFM192A, AU565, SKBR3, ZR7530 and HCC1419 Breast Cancer cell lines ----
 # Ibrutinib treatment inhibits breast cancer progression and metastasis by inducing conversion of myeloid-derived
 # suppressor cells to dendritic cells (2020)
@@ -730,11 +621,16 @@ ibrutinib_EFM192A_attrs[variable %like% "BTK"]  # very small value...
 ibrutinib_EFM192A_attrs[variable %like% "ITK"]  # very small value...
 ibrutinib_EFM192A_attrs[variable %like% "EGFR"]  # very small value...
 get_expression_in_cell_line(data_type = "EXP", cell_line_name = "EFM192A", variable_name = "BTK")
-# Expression of BTK is in the 46th percentile (among all cell lines)
+# Expression of BTK is in the 46th percentile among all cell lines, and 47th in breast cancer
 get_expression_in_cell_line(data_type = "CNV", cell_line_name = "EFM192A", variable_name = "BTK")
+# CNV of BTK is in the 93rd percentile (among all cell lines)
 
 # Top positive attributed variables:
-head(ibrutinib_EFM192A_attrs)
+head(ibrutinib_EFM192A_attrs, n = 10)
+quantile(ibrutinib_EFM192A_attrs$value)
+
+
+# MAGEA8, CRLF3, FAM91A1, DERL1, THAP3, PSMA1, TOB1-AS1, FAM90A26, CDC27, DNTTIP1
 sum(ibrutinib_EFM192A_attrs[value >= 0]$value)
 sum(ibrutinib_EFM192A_attrs[value < 0]$value)
 
@@ -743,6 +639,13 @@ sum(ibrutinib_EFM192A_attrs[value < 0]$value)
 get_expression_in_cell_line(data_type = "EXP", cell_line_name = "EFM192A", variable_name = "MAGEA8")
 # 98th percentile in all cell lines
 # 97th percentile in breast cancer cell lines
+
+# CRLF3
+# Paper: Comprehensive molecular biomarker identification in breast cancer brain metastases (2017)
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "EFM192A", variable_name = "CRLF3")
+# 2nd percentile in all cell lines
+# 18th percentile in breast cancer cell lines
+# Seems to be downregulated
 
 # DERL1
 # Paper: Derlin-1 functions as a growth promoter in breast cancer (2020)
@@ -828,6 +731,14 @@ read_docx() %>%
 
 
 ### EFM192A GSEA ----
+require(clusterProfiler)
+require(pathview)
+organism = "org.Hs.eg.db"
+# BiocManager::install(organism, character.only = TRUE)
+library(organism, character.only = TRUE)
+keytypes(get(organism))
+org.Hs.eg.db
+
 # Get top 5% of attributions from EXP in each of positive and negative attributions
 
 get_top_and_bottom_attrs <- function(all_attrs, omic_grep) {
@@ -908,6 +819,482 @@ all_gse_exp <- enrichDAVID(
 p_all_exp <- ridgeplot(all_gse_exp) + labs(x = "enrichment distribution") +
   ggtitle("Top 5% EXP Attributions GSE",
           subtitle = "Cell-line EFM192A (Breast Adenocarcinoma) + Ibrutinib\nTarget: 0.66, Predicted: 0.51")
+
+
+### BTK in EFM192A AAC vs EXP/CNV ====
+MUT <- fread("Data/DRP_Training_Data/DepMap_21Q2_Mutations_by_Cell.csv")
+CNV <- fread("Data/DRP_Training_Data/DepMap_21Q2_CopyNumber.csv")
+EXP <- fread("Data/DRP_Training_Data/DepMap_21Q2_Expression.csv")
+
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "EFM192A", variable_name = "BTK")
+# Expression of BTK is in the 46th percentile (among all cell lines)
+get_expression_in_cell_line(data_type = "CNV", cell_line_name = "EFM192A", variable_name = "BTK")
+# Expression of BTK is in the 46th percentile (among all cell lines)
+get_expression_in_cell_line(data_type = "MUT", cell_line_name = "EFM192A", variable_name = "BTK")
+
+drug_name <- "Ibrutinib"
+gene_name <- "BTK"
+cell_line_name <- "EFM192A"
+# Find expression of BTK in all cell lines that ibrutinib was tested in, plot it against AAC 
+cur_cell_aac <- unique(ctrp[cpd_name == drug_name][, c("ccl_name", "area_above_curve")])
+cur_exp_subset <- EXP[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
+                                                                                      gene_name), with = F]
+exp_aac_subset <- merge(cur_exp_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+colnames(exp_aac_subset)[2] <- "value"
+
+# Find copy number of BTK in all cell lines that ibrutinib was tested in, plot it against AAC 
+cur_cnv_subset <- CNV[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
+                                                                                      gene_name), with = F]
+cnv_aac_subset <- merge(cur_cnv_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+colnames(cnv_aac_subset)[2] <- "value"
+
+require(ggplot2)
+require(patchwork)
+p_exp_aac <- ggplot(data = exp_aac_subset) +
+  geom_point(aes(x = area_above_curve, y = value)) +
+  xlab("Area Above Curve") +
+  ylab("Gene Expression") +
+  annotate(geom = "point",
+           x = exp_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve,
+           y = exp_aac_subset[stripped_cell_line_name == cell_line_name]$value,
+           colour = "orange", size = 1) + 
+  annotate(
+    geom = "curve",
+    x = 0.6, y = 2,
+    xend = exp_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve - 0.005,
+    yend = exp_aac_subset[stripped_cell_line_name == cell_line_name]$value + 0.2, 
+    curvature = -.3, arrow = arrow(length = unit(2, "mm"))
+  ) +
+  annotate(geom = "text", x = 0.6, y = 2.3, label = "EFM192A", size = 6,
+  ) +
+  theme(text = element_text(size = 14, face = "bold"))
+
+p_cnv_aac <- ggplot(data = cnv_aac_subset) +
+  geom_point(aes(x = area_above_curve, y = value)) +
+  xlab("Area Above Curve") +
+  ylab("Copy Number") +
+  annotate(geom = "point",
+           x = cnv_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve,
+           y = cnv_aac_subset[stripped_cell_line_name == cell_line_name]$value,
+           colour = "orange", size = 1) + 
+  annotate(
+    geom = "curve",
+    x = 0.6, y = 1.35,
+    xend = cnv_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve - 0.005,
+    yend = cnv_aac_subset[stripped_cell_line_name == cell_line_name]$value + 0.05, 
+    curvature = -.3, arrow = arrow(length = unit(2, "mm"))
+  ) +
+  annotate(geom = "text", x = 0.6, y = 1.4, label = "EFM192A", size = 6, 
+  ) +
+  theme(text = element_text(size = 14, face = "bold"))
+
+
+
+p_exp_aac + p_cnv_aac 
+
+
+ggsave("Plots/Interpretation/BTK_EXP_CNV_vs_AAC.pdf")
+
+# Top positive attributed variables:
+head(ibrutinib_te617t_attrs)
+
+# FGF10 
+# Paper: FGF10/FGFR2 signal induces cell migration and invasion in pancreatic cancer (2008)
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "FGF10")
+# ~ 99th percentile
+get_expression_in_cell_line(data_type = "CNV", cell_line_name = "TE617T", variable_name = "FGF10")
+# 24th percentile
+
+# UTS2B, potent vasoconstrictor...
+# Paper: Protein expression of urotensin II, urotensin-related peptide and their receptor in the lungs of patients 
+# with lymphangioleiomyomatosis (2010)
+# ...Urotensin II (UII) and urotensin-related peptide (URP) are vasoactive neuropeptides with wide ranges of action in
+# the normal mammalian lung, including the control of smooth muscle cell proliferation...
+
+# Overexpressed in a bunch of cancers: https://www.proteinatlas.org/ENSG00000188958-UTS2B/pathology
+# Paper: Integrated Genomic Analysis of Hu€rthle Cell Cancer Reveals Oncogenic Drivers, Recurrent Mitochondrial Mutations,
+# and Unique Chromosomal Landscapes (2018) ...overexpressed in thyroid cancer...
+
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "UTS2B")
+# ~ 99th percentile
+
+# BMP3
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "BMP3")
+# ~ 100th percentile
+# Paper: Bone morphogenic protein 3 inactivation is an early and frequent event in colorectal cancer development (2008)
+# Overexpressed in few cancer types: https://www.proteinatlas.org/ENSG00000152785-BMP3/pathology
+
+# Top negative attributed variables
+tail(ibrutinib_te617t_attrs)
+
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "SYPL2")
+# 100th percentile, overexpressed 
+
+
+### MAGEA8, DERL1, FAM91A1  in EFM192A AAC vs EXP/CNV ====
+# MUT <- fread("Data/DRP_Training_Data/DepMap_21Q2_Mutations_by_Cell.csv")
+# CNV <- fread("Data/DRP_Training_Data/DepMap_21Q2_CopyNumber.csv")
+EXP <- fread("Data/DRP_Training_Data/DepMap_21Q2_Expression.csv")
+
+cnv_exp_integ <- get_all_interpret(data_types = "gnndrug_cnv_exp", split_type = "CELL_LINE")
+ibrutinib_EFM192A_attrs <- get_top_attrs(cnv_exp_integ, compound_name = "Ibrutinib", cell_line_name = "EFM192A")
+head(ibrutinib_EFM192A_attrs, n = 10)
+# MAGEA8, CRLF3, FAM91A1, DERL1, THAP3, PSMA1, TOB1-AS1 (CNV), FAM90A26, CDC27, DNTTIP1
+
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "EFM192A", variable_name = "MAGEA8")
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "EFM192A", variable_name = "DERL1")
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "EFM192A", variable_name = "FAM91A1")
+
+# Find expression of each gene in all cell lines that ibrutinib was tested in, plot it against AAC 
+drug_name <- "Ibrutinib"
+cell_line_name <- "EFM192A"
+cur_cell_aac <- unique(ctrp[cpd_name == drug_name][, c("ccl_name", "area_above_curve", "primary_disease")])
+
+# MAGEA8
+magea8_exp_subset <- EXP[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
+                                                                                      "MAGEA8"), with = F]
+magea8_exp_aac_subset <- merge(magea8_exp_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+colnames(magea8_exp_aac_subset)[2] <- "value"
+
+# CRLF3
+crlf3_exp_subset <- EXP[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
+                                                                                         "CRLF3"), with = F]
+crlf3_exp_aac_subset <- merge(crlf3_exp_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+colnames(crlf3_exp_aac_subset)[2] <- "value"
+
+#"DERL1"
+derl1_exp_subset <- EXP[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
+                                                                                      "DERL1"), with = F]
+derl1_exp_aac_subset <- merge(derl1_exp_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+colnames(derl1_exp_aac_subset)[2] <- "value"
+
+#"FAM91A1"
+fam91a1_exp_subset <- EXP[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
+                                                                                      "FAM91A1"), with = F]
+fam91a1_exp_aac_subset <- merge(fam91a1_exp_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+colnames(fam91a1_exp_aac_subset)[2] <- "value"
+
+# # Find copy number of BTK in all cell lines that ibrutinib was tested in, plot it against AAC 
+# cur_cnv_subset <- CNV[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
+#                                                                                       gene_name), with = F]
+# cnv_aac_subset <- merge(cur_cnv_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+# colnames(cnv_aac_subset)[2] <- "value"
+
+
+plot_relative_expression <- function(data, xlab, ylab, annotate_label, cell_line_name,
+                                     curvature=-0.3,
+                                     curve_x_plus = 0.1, curve_y_plus = 0.1,
+                                     curve_xend_plus = 0.01, curve_yend_plus = 0,
+                                     text_x_plus = 0.1, text_y_plus = 0.1,
+                                     xlim_min = 0, xlim_max = 1) {
+  p_exp_aac <- ggplot(data = data, aes(x= area_above_curve, y = value)) +
+    geom_point(aes(x = area_above_curve, y = value, color = primary_disease)) +
+    xlab(xlab) +
+    ylab(ylab) +
+    annotate(geom = "point",
+             x = data[stripped_cell_line_name == cell_line_name]$area_above_curve,
+             y = data[stripped_cell_line_name == cell_line_name]$value,
+             colour = "orange", size = 1) + 
+    annotate(
+      geom = "curve",
+      x = data[stripped_cell_line_name == cell_line_name]$area_above_curve + curve_x_plus,
+      y = data[stripped_cell_line_name == cell_line_name]$value + curve_y_plus,
+      xend = data[stripped_cell_line_name == cell_line_name]$area_above_curve + curve_xend_plus,
+      yend = data[stripped_cell_line_name == cell_line_name]$value + curve_yend_plus, 
+      curvature = curvature, arrow = arrow(length = unit(2, "mm"))
+    ) +
+    annotate(geom = "text",
+             x = data[stripped_cell_line_name == cell_line_name]$area_above_curve + text_x_plus,
+             y = data[stripped_cell_line_name == cell_line_name]$value + text_y_plus,
+             label = cell_line_name, size = 4,
+    ) +
+    theme(text = element_text(size = 14, face = "bold"), legend.position = "top") +
+    scale_color_discrete(name = "Primary Disease") +
+    scale_x_continuous(breaks = seq(xlim_min, xlim_max, by = 0.1)) +
+    ylim(0, 10) +
+    # xlim(xlim_min, xlim_max) +
+    geom_smooth(aes(color = primary_disease),
+                data = subset(data, primary_disease == "Breast Cancer"),
+                method='lm')
+  
+  return(p_exp_aac)
+}
+
+require(ggplot2)
+require(patchwork)
+magea8_exp_aac_subset[!(primary_disease %in% c("Breast Cancer", "Leukemia", "Lymphoma")), primary_disease := "Other"]
+magea8_exp_aac_subset <- magea8_exp_aac_subset[primary_disease != "Other"]
+p_magea8_exp_aac <- plot_relative_expression(data = magea8_exp_aac_subset,
+                         xlab = "Area Above Curve", ylab = "MAGEA8 Expression",
+                         cell_line_name = "EFM192A")
+
+
+# p_magea8_exp_aac <- ggplot(data = magea8_exp_aac_subset, aes(x= area_above_curve, y = value)) +
+#   geom_point(aes(x = area_above_curve, y = value, color = primary_disease)) +
+#   xlab("Area Above Curve") +
+#   ylab("MAGEA8 Expression") +
+#   annotate(geom = "point",
+#            x = magea8_exp_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve,
+#            y = magea8_exp_aac_subset[stripped_cell_line_name == cell_line_name]$value,
+#            colour = "orange", size = 1) + 
+#   annotate(
+#     geom = "curve",
+#     x = 0.6, y = 4.5,
+#     xend = magea8_exp_aac_subset[stripped_cell_line_name == cell_line_name]$area_above_curve - 0.01,
+#     yend = magea8_exp_aac_subset[stripped_cell_line_name == cell_line_name]$value, 
+#     curvature = -.3, arrow = arrow(length = unit(2, "mm"))
+#   ) +
+#   annotate(geom = "text", x = 0.6, y = 4.4, label = "EFM192A", size = 4,
+#   ) +
+#   theme(text = element_text(size = 14, face = "bold"), legend.position = "top") +
+#   scale_color_discrete(name = "Primary Disease") +
+#   ylim(0, 10) +
+#   xlim(0, 1) +
+#   geom_smooth(aes(color = primary_disease),
+#               data = subset(magea8_exp_aac_subset, primary_disease == "Breast Cancer"),
+#               method='lm')
+  
+
+
+derl1_exp_aac_subset[!(primary_disease %in% c("Breast Cancer", "Leukemia", "Lymphoma")), primary_disease := "Other"]
+derl1_exp_aac_subset <- derl1_exp_aac_subset[primary_disease != "Other"]
+
+p_derl1_exp_aac <- plot_relative_expression(data = derl1_exp_aac_subset,
+                                             xlab = "Area Above Curve", ylab = "DERL1 Expression",
+                                             cell_line_name = "EFM192A",
+                                            curvature = -0.3,
+                                            curve_x_plus = -0.02, curve_y_plus = 0.5,
+                                            curve_xend_plus = -0.001, curve_yend_plus = 0.1,
+                                            text_x_plus = -0.075, text_y_plus = 0.5,
+                                            xlim_max = 0.75)
+
+library(dplyr)
+fitted_models <- derl1_exp_aac_subset %>% group_by(primary_disease) %>% do(model = lm(value ~ area_above_curve, data = .))
+fitted_models$model
+summary(fitted_models$model[[1]])  # 0.3505 Adjusted R-squared, breast cancer
+summary(fitted_models$model[[2]])  # 0.0124 leukemia
+summary(fitted_models$model[[3]])  # -0.0267 lymphoma
+
+
+fam91a1_exp_aac_subset[!(primary_disease %in% c("Breast Cancer", "Leukemia", "Lymphoma")), primary_disease := "Other"]
+fam91a1_exp_aac_subset <- fam91a1_exp_aac_subset[primary_disease != "Other"]
+p_fam91a1_exp_aac <- plot_relative_expression(data = fam91a1_exp_aac_subset,
+                                            xlab = "Area Above Curve", ylab = "FAM91A1 Expression",
+                                            cell_line_name = "EFM192A",
+                                            curvature = 0.3,
+                                            curve_x_plus = -0.05, curve_y_plus = 0.2,
+                                            curve_xend_plus = -0.005, curve_yend_plus = 0.01,
+                                            text_x_plus = -0.05, text_y_plus = 0.5,
+                                            xlim_max = 0.75)
+
+p_derl1_exp_aac + p_fam91a1_exp_aac +
+  plot_layout(guides = "collect") & theme(legend.position = "top")
+ggsave("Plots/Interpretation/DERL1_FAM91A1_EXP_vs_AAC.pdf")
+
+library(dplyr)
+fitted_models <- fam91a1_exp_aac_subset %>% group_by(primary_disease) %>% do(model = lm(value ~ area_above_curve, data = .))
+fitted_models$model
+summary(fitted_models$model[[1]])  # 0.1336 Adjusted R-squared
+summary(fitted_models$model[[2]])  # -0.02229
+summary(fitted_models$model[[3]])  # 0.005535
+
+
+p_magea8_exp_aac + p_derl1_exp_aac + p_fam91a1_exp_aac +
+  plot_layout(guides = "collect") & theme(legend.position = "top")
+
+
+ggsave("Plots/Interpretation/MAGEA8_DERL1_FAM91A1_EXP_vs_AAC.pdf",
+       width = 16, height = 7)
+
+
+
+top_genes <- c("MAGEA8", "CRLF3", "FAM91A1", "DERL1", "THAP3", "PSMA1", "FAM90A26", "CDC27", "DNTTIP1")
+top_cnv <- "TOB1-AS1"
+all_plots <- vector(mode = "list", length = length(top_genes))
+# MAGEA8, CRLF3, FAM91A1, DERL1, THAP3, PSMA1, TOB1-AS1 (CNV), FAM90A26, CDC27, DNTTIP1
+dir.create("Plots/Interpretation/EFM192A/")
+for (i in 1:length(top_genes)) {
+  cur_gene <- top_genes[i]
+  exp_subset <- EXP[stripped_cell_line_name %in% unique(cur_cell_aac$ccl_name)][, c("stripped_cell_line_name",
+                                                                                            cur_gene), with = F]
+  cur_exp_aac_subset <- merge(exp_subset, cur_cell_aac, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+  colnames(cur_exp_aac_subset)[2] <- "value"
+  
+  cur_exp_aac_subset <- cur_exp_aac_subset[primary_disease %in% c("Breast Cancer", "Leukemia", "Lymphoma")]
+  # cur_exp_aac_subset <- cur_exp_aac_subset[primary_disease != "Other"]
+  p_exp_aac <- plot_relative_expression(data = cur_exp_aac_subset,
+                                                xlab = "Area Above Curve", ylab = paste(cur_gene, "Expression"),
+                                                cell_line_name = "EFM192A")
+  all_plots[[i]] <- p_exp_aac
+  ggsave(filename = paste0("Plots/Interpretation/EFM192A/", cur_gene, "_EXP_vs_AAC.pdf"),
+         plot = p_exp_aac)
+}
+
+
+all_plots[[5]]
+
+# SVM and Biomarker Proof ====
+# Use top genes as features for an SVM, classifying responsive (AAC >= 0.5) and non-responsive
+# (AAC < 0.5) cell lines to ibrutinib
+require(data.table)
+EXP <- fread("Data/DRP_Training_Data/DepMap_21Q2_Expression.csv")
+ctrp <- fread("Data/DRP_Training_Data/CTRP_AAC_SMILES.txt")
+
+cnv_exp_integ <- get_all_interpret(data_types = "gnndrug_cnv_exp", split_type = "CELL_LINE")
+ibrutinib_EFM192A_attrs <- get_top_attrs(cnv_exp_integ, compound_name = "Ibrutinib", cell_line_name = "EFM192A")
+
+# Take top 100 exp features
+head(ibrutinib_EFM192A_attrs, n = 100)
+top_100 <- head(ibrutinib_EFM192A_attrs[variable %like% "exp_"], n = 100)$variable
+top_100 <- gsub("exp_", "", top_100)
+top_genes <- c("MAGEA8", "CRLF3", "FAM91A1", "DERL1", "THAP3", "PSMA1", "FAM90A26", "CDC27", "DNTTIP1")
+
+
+for (gene in top_genes) {
+  print(get_expression_in_cell_line(data_type = "EXP", cell_line_name = "EFM192A", variable_name = "MAGEA8"))
+}
+
+
+# Subset gene expression data to only the 9 genes
+exp_sub <- EXP[, c("stripped_cell_line_name", top_genes), with = F]
+# Add AAC information
+ctrp_sub <- ctrp[cpd_name == "Ibrutinib", c("ccl_name", "primary_disease", "area_above_curve")]
+cur_data <- merge(exp_sub, ctrp_sub, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+cur_data[, responsive := ifelse(area_above_curve >= 0.5, 1, 0)]
+
+
+# require(devtools)
+# install_version("RSofia", version = "1.1", repos = "http://cran.us.r-project.org")
+# require("RSofia")
+require(caTools)
+require(e1071)
+
+set.seed(42) 
+sum(cur_data$responsive)
+cur_data$responsive <- as.factor(cur_data$responsive)
+
+sample = sample.split(cur_data$responsive, SplitRatio = .5)  # stratifies data too
+train <- cur_data[(sample)]
+test <- cur_data[(!sample)]
+# train = subset(cur_data, sample == TRUE)
+# test  = subset(cur_data, sample == FALSE)
+
+colnames(train[, c(top_genes, "responsive"), with = F])
+classifier = svm(formula = responsive ~ .,
+                 data = train[, c(top_genes, "responsive"), with = F],
+                 type = 'C-classification',
+                 kernel = 'linear',
+                 scale = F
+                 )
+
+summary(classifier)
+print(classifier)
+
+pred <- predict(classifier, test[, 2:101])
+table(pred, test$responsive)  # terrible...
+
+
+# Linear regression model
+cnv_exp_integ <- get_all_interpret(data_types = "gnndrug_cnv_exp", split_type = "CELL_LINE")
+ibrutinib_EFM192A_attrs <- get_top_attrs(cnv_exp_integ, compound_name = "Ibrutinib", cell_line_name = "EFM192A")
+
+# Take top 100 exp features
+head(ibrutinib_EFM192A_attrs, n = 100)
+top_100 <- head(ibrutinib_EFM192A_attrs[variable %like% "exp_"], n = 100)$variable
+top_100 <- gsub("exp_", "", top_100)
+top_genes <- c("MAGEA8", "CRLF3", "FAM91A1", "DERL1", "THAP3", "PSMA1", "FAM90A26", "CDC27", "DNTTIP1")
+
+regressor <- lm(area_above_curve ~ ., data = train[, c(top_genes, "area_above_curve"), with = F])
+summary(regressor)
+
+regressor <- lm(area_above_curve ~ ., data = train[, c(top_100, "area_above_curve"), with = F])
+summary(regressor)
+
+
+exp_mirna_integ <- get_all_interpret(data_types = "gnndrug_exp_mirna", split_type = "CELL_LINE")
+ibrutinib_EFM192A_attrs_exp_mirna <- get_top_attrs(exp_mirna_integ, compound_name = "Ibrutinib", cell_line_name = "EFM192A")
+
+# Take top 100 mirna features
+head(ibrutinib_EFM192A_attrs_exp_mirna, n = 100)
+top_100 <- head(ibrutinib_EFM192A_attrs_exp_mirna[variable %like% "-miR-"], n = 100)$variable
+top_100 <- gsub("n_", "", top_100)
+# top_genes <- c("MAGEA8", "CRLF3", "FAM91A1", "DERL1", "THAP3", "PSMA1", "FAM90A26", "CDC27", "DNTTIP1")
+# Subset gene expression data to only the 9 genes
+MIRNA <- fread(path_dict[["MIRNA"]])
+mirna_sub <- MIRNA[, c("stripped_cell_line_name", top_100), with = F]
+# Add AAC information
+ctrp_sub <- ctrp[cpd_name == "Ibrutinib", c("ccl_name", "primary_disease", "area_above_curve")]
+cur_data <- merge(mirna_sub, ctrp_sub, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+cur_data[, responsive := ifelse(area_above_curve >= 0.5, 1, 0)]
+
+sample = sample.split(cur_data$responsive, SplitRatio = .5)  # stratifies data too
+train <- cur_data[(sample)]
+test <- cur_data[(!sample)]
+
+regressor <- lm(area_above_curve ~ .,
+                data = cur_data[, c(top_100, "area_above_curve"), with = F], )
+summary(regressor)  # Adjusted R-squared:  0.0747
+
+# Take top 100 mirna features
+metab_rppa_integ <- get_all_interpret(data_types = "gnndrug_metab_rppa", split_type = "CELL_LINE")
+ibrutinib_EFM192A_attrs_metab_rppa <- get_top_attrs(metab_rppa_integ, compound_name = "Ibrutinib", cell_line_name = "EFM192A")
+
+head(ibrutinib_EFM192A_attrs_exp_mirna, n = 100)
+top_100 <- head(ibrutinib_EFM192A_attrs_exp_mirna[variable %like% "-miR-"], n = 100)$variable
+top_100 <- gsub("n_", "", top_100)
+# top_genes <- c("MAGEA8", "CRLF3", "FAM91A1", "DERL1", "THAP3", "PSMA1", "FAM90A26", "CDC27", "DNTTIP1")
+# Subset gene expression data to only the 9 genes
+MIRNA <- fread(path_dict[["MIRNA"]])
+mirna_sub <- MIRNA[, c("stripped_cell_line_name", top_100), with = F]
+# Add AAC information
+ctrp_sub <- ctrp[cpd_name == "Ibrutinib", c("ccl_name", "primary_disease", "area_above_curve")]
+cur_data <- merge(mirna_sub, ctrp_sub, by.x = "stripped_cell_line_name", by.y = "ccl_name")
+cur_data[, responsive := ifelse(area_above_curve >= 0.5, 1, 0)]
+
+sample = sample.split(cur_data$responsive, SplitRatio = .5)  # stratifies data too
+train <- cur_data[(sample)]
+test <- cur_data[(!sample)]
+
+regressor <- lm(area_above_curve ~ .,
+                data = cur_data[, c(top_100, "area_above_curve"), with = F], )
+summary(regressor)
+
+# https://cran.r-project.org/src/contrib/Archive/RSofia/
+# Top positive attributed variables:
+head(ibrutinib_te617t_attrs)
+
+# FGF10 
+# Paper: FGF10/FGFR2 signal induces cell migration and invasion in pancreatic cancer (2008)
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "FGF10")
+# ~ 99th percentile
+get_expression_in_cell_line(data_type = "CNV", cell_line_name = "TE617T", variable_name = "FGF10")
+# 24th percentile
+
+# UTS2B, potent vasoconstrictor...
+# Paper: Protein expression of urotensin II, urotensin-related peptide and their receptor in the lungs of patients 
+# with lymphangioleiomyomatosis (2010)
+# ...Urotensin II (UII) and urotensin-related peptide (URP) are vasoactive neuropeptides with wide ranges of action in
+# the normal mammalian lung, including the control of smooth muscle cell proliferation...
+
+# Overexpressed in a bunch of cancers: https://www.proteinatlas.org/ENSG00000188958-UTS2B/pathology
+# Paper: Integrated Genomic Analysis of Hu€rthle Cell Cancer Reveals Oncogenic Drivers, Recurrent Mitochondrial Mutations,
+# and Unique Chromosomal Landscapes (2018) ...overexpressed in thyroid cancer...
+
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "UTS2B")
+# ~ 99th percentile
+
+# BMP3
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "BMP3")
+# ~ 100th percentile
+# Paper: Bone morphogenic protein 3 inactivation is an early and frequent event in colorectal cancer development (2008)
+# Overexpressed in few cancer types: https://www.proteinatlas.org/ENSG00000152785-BMP3/pathology
+
+# Top negative attributed variables
+tail(ibrutinib_te617t_attrs)
+
+get_expression_in_cell_line(data_type = "EXP", cell_line_name = "TE617T", variable_name = "SYPL2")
+# 100th percentile, overexpressed 
+
 
 
 # Lapatinib ----
