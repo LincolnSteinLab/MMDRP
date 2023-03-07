@@ -1,1 +1,0 @@
-CTRP_AAC_SMILES.txt,1,40,5,gnndrug cnv,HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_DRUG_NoBottleNeck_NoTCGAPretrain_MergeBySum_WeightedRMSELoss_GNNDrugs_gnndrug_cnv,drug,1,0,0,0,sum,weighted_rmse

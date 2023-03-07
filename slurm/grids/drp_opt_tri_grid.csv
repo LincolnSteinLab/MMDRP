@@ -1,2 +1,0 @@
-CTRP_AAC_SMILES.txt,1,32,5,gnndrug mirna metab,HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_BOTH_NoBottleNeck_NoTCGAPretrain_MergeByLMF_WeightedRMSELoss_GNNDrugs_gnndrug_mirna_metab,both,1,0,0,0,lmf,weighted_rmse
-CTRP_AAC_SMILES.txt,1,32,5,gnndrug metab rppa,HyperOpt_DRP_CTRP_ResponseOnly_EncoderTrain_Split_BOTH_NoBottleNeck_NoTCGAPretrain_MergeByLMF_WeightedRMSELoss_GNNDrugs_gnndrug_metab_rppa,both,1,0,0,0,lmf,weighted_rmse
