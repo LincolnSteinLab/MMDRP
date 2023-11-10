@@ -1,0 +1,12 @@
+drp_first_layer_size,456
+drp_last_layer_size,8
+drp_num_layers,5
+lr,1e-05
+batch_size,16
+gnn_hidden_channels,474
+gnn_out_channels,1348
+gnn_num_layers,4
+gnn_num_timesteps,2
+gnn_dropout,0.1848713418382471
+lmf_output_dim,559
+lmf_rank,14

@@ -402,11 +402,11 @@ uniqueN(better_than_assigned[, c("cpd_name", "cell_name")])  # 600 drug and cell
 uniqueN(better_than_assigned[, c("cpd_name")])  # 31 repurposable drugs
 better_than_assigned <- targeted_subset[target >= highest_drug_match_disease_aac + 0.1]
 uniqueN(better_than_assigned[, c("cpd_name", "cell_name")])  # 182
-uniqueN(better_than_assigned[, c("cpd_name")])  # 17
+uniqueN(better_than_assigned[, c("cpd_name")])  # 17 repurposable drugs
 better_than_assigned <- targeted_subset[target >= highest_drug_match_disease_aac + 0.2]
 uniqueN(better_than_assigned[, c("cpd_name", "cell_name")])  # 81
 uniqueN(better_than_assigned[, c("cpd_name")])  # 14
-unique(better_than_assigned[, c("cpd_name")])  # 14
+unique(better_than_assigned[, c("cpd_name")])  # 14 repurposable drugs
 
 
 # No minimum difference -> 2991 rows
@@ -414,6 +414,7 @@ unique(better_than_assigned[, c("cpd_name")])  # 14
 # Minimum difference of 0.2 -> 405 rows
 
 better_than_assigned <- targeted_subset[target >= highest_drug_match_disease_aac]
+
 # Repurposable drugs that have x amount higher AAC in unassigned cancers, and at least one
 # of our models can predict with MAE loss less than 0.2 while seeing that cell line for the 
 # first time
@@ -439,10 +440,11 @@ fwrite(final_data, "Data/repurposable_drugs_table.csv")
 # Subset by MAE loss less than 0.2 and AAC more than prescribed at least 0.2
 # better_than_assigned_subset <- better_than_assigned[target >= highest_drug_match_disease_aac + 0.2 &
                                                       # RMSE <= 0.2]
-better_than_assigned_subset <- better_than_assigned[target >= highest_drug_match_disease_aac + 0.2 &
+better_than_assigned_subset <- better_than_assigned[target >= highest_drug_match_disease_aac &
                                                       RMSE <= 0.2]
 
 final_data <- better_than_assigned_subset[, head(.SD, 1), by = c("cpd_name", "cell_name")]
+final_data[cpd_name == "Ibrutinib"]
 setorder(final_data, -target)
 setcolorder(final_data, c("assigned_disease", "cpd_name", "highest_drug_match_disease_aac",
                           "cell_name", "primary_disease", "lineage", "lineage_subtype"))
@@ -454,8 +456,8 @@ final_data[, data_types := gsub("_", " + ", data_types, fixed = T)]
 final_data[, cell_content := paste0(data_types, "\n", pred)]
 
 # Find percentage of entries that didn't have EXP in their data
-final_data[!(data_types %like% "EXP")]  # 48 rows
-nrow(final_data)  # 76 rows
+final_data[!(data_types %like% "EXP")]  # 351 rows
+nrow(final_data)  # 585 rows
 
 # flextable(final_data)
 
@@ -518,7 +520,7 @@ final_ft <- autofit(final_ft)
 
 read_docx() %>% 
   body_add_flextable(value = final_ft) %>% 
-  print(target = "Plots/Dataset_Exploration/Top_repurposable_Drugs_table.docx")
+  print(target = "Top_repurposable_Drugs_table.docx")
 
 
 # Important data types per cell line / lineage / drug ====

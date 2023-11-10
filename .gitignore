@@ -133,3 +133,10 @@ slurm/*
 
 # Pytorch Checkpoints
 *.pt
+
+# PNG images
+*.png
+
+# CSV results
+*results.csv
+

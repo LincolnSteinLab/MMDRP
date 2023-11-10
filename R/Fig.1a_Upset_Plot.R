@@ -116,7 +116,7 @@ make_all_combinations <- function(set){
 }
 
 
-
+?upset
 p <- upset(fromList(list_input),
       sets = c("CTRPv2 Dose-Response", "GDSC2 Dose-Response",
                "Mutational","Copy Number Variation", "Gene Expression", "Protein Quantification",
@@ -125,13 +125,18 @@ p <- upset(fromList(list_input),
       keep.order = T,
       # sets = c("Dose-Response"),
       mainbar.y.label = "Data Intersection Size",
+      # mainbar.y.max = 30,
       sets.x.label = "Cell Lines per Data Type",
       # group.by = "sets",
       order.by = "freq",
+      scale.sets = "identity",
+      # set_size.angles = 45,
       text.scale = c(1.3, 1.3, 1, 1, 1, 0.75))
 p
 
-pdf(file="Plots/Dataset_Exploration/UpSetR_Overlap_Plot_CTRPv2.pdf", width = 10, height = 8)
+pdf(file="Plots/Dataset_Exploration/UpSetR_Overlap_Plot_CTRPv2.pdf",
+    width = 10, height = 5
+    )
 p
 dev.off()
 

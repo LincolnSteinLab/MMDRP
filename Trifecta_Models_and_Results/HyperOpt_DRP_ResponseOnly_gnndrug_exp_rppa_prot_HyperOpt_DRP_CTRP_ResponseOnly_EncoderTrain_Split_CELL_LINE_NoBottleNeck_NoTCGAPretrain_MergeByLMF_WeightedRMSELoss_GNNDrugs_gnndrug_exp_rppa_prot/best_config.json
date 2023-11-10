@@ -1,0 +1,1 @@
+{"drp_first_layer_size": 341, "drp_last_layer_size": 8, "drp_num_layers": 5, "lr": 1e-05, "batch_size": 16, "gnn_hidden_channels": 440, "gnn_out_channels": 1414, "gnn_num_layers": 2, "gnn_num_timesteps": 2, "gnn_dropout": 0.05384168320892836, "lmf_output_dim": 575, "lmf_rank": 63}
