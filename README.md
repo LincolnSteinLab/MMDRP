@@ -1,7 +1,7 @@
 # MMDRP: Drug Response Prediction and Biomarker Discovery Using Multi-Modal Deep Learning
 
 Preprocessing, training and evaluation code for MMDRP models.  
-DOI: [10.1101/2023.11.16.567479](https://doi.org/10.1101/2023.11.16.567479)
+DOI: [10.1093/bioadv/vbae010](https://doi.org/10.1093/bioadv/vbae010)
 
 ## Preprocessing
 Training data was obtained from the following:
