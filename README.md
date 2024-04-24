@@ -1,7 +1,10 @@
 # MMDRP: Drug Response Prediction and Biomarker Discovery Using Multi-Modal Deep Learning
+![Figure_2](https://github.com/LincolnSteinLab/MMDRP/assets/21085967/7d28b23e-e06d-4177-ad20-13ca37c40c49)
 
-Preprocessing, training and evaluation code for MMDRP models.  
-DOI: [10.1093/bioadv/vbae010](https://doi.org/10.1093/bioadv/vbae010)
+
+MMDRP is now published in [Bioinformatics Advances](https://doi.org/10.1093/bioadv/vbae010)! (Open Access)
+
+This repository contains preprocessing, training and evaluation code for MMDRP models.
 
 ## Preprocessing
 Training data was obtained from the following:
